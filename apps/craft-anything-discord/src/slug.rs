@@ -53,8 +53,10 @@ mod tests {
     }
 
     #[test]
-    fn non_ascii_letters_become_separators() {
-        assert_eq!(slugify("Đua Xe"), "dua-xe");
+    fn non_ascii_letters_are_separators_not_transliterated() {
+        // "Đ" is not ASCII, so it separates; leading separators are dropped. No transliteration.
+        assert_eq!(slugify("Đua Xe"), "ua-xe");
+        assert_eq!(slugify("Gà Rán Vui"), "g-r-n-vui");
     }
 
     #[test]
