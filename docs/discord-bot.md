@@ -178,6 +178,8 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `CRAFT_BACKEND` | no | The craft backend that builds (`--backend`). Default `Claude Code (herdr)`; set it empty to pass no `--backend` and let craft choose. |
 | `DAILY_SUMMARY_TIME` | no | The daily summary's local time, 24-hour `HH:MM` (default `09:00`). |
 | `DAILY_SUMMARY_UTC_OFFSET` | no | The summary's time zone as a fixed UTC offset, such as `+07:00` or `-05:30`. Default: the system's local time zone. |
+| `PRETRUST_PORTS` | no | `1` to trust each port's project folder in Claude Code's config before a herdr build (see [Trusting port folders for you](#trusting-port-folders-for-you)). Default off. |
+| `CLAUDE_CONFIG_JSON` | no | Claude Code's `.claude.json` for `PRETRUST_PORTS`, as WSL (`/mnt/c/…`) or Windows (`C:\…`) sees it. Default: `.claude.json` in the Windows profile herdr runs under. |
 
 The three `PLANE_*` keys go together: with none of them Plane is off, and with only some the bot
 stops and names the missing one. Without `GITHUB_OWNER` no repo is made.
@@ -325,11 +327,50 @@ rules). How it works and what it changes:
   folder", type `/exit`, then `/port` again. Trusting `PORTS_ROOT` itself once covers the ports
   under it, except a port that is a git repository of its own (with `GITHUB_OWNER` set): Claude
   Code stops looking for a trusted folder at the repository's root.
+  Or let the bot do it for the ports it makes: [Trusting port folders for you](#trusting-port-folders-for-you).
 - Builds need Deep mode, which the bot always uses: Clean room can't build through herdr.
 - When a run ends, Claude Code exits and its pane stays for you to look at; the next run in that
   folder closes it.
 
 To build headless again (Claude Code in WSL, `claude -p`), set `CRAFT_BACKEND=Claude Code`.
+
+### Trusting port folders for you
+
+With `PRETRUST_PORTS=1` in the env file (off by default), the bot answers the trust question ahead
+of time for the folders it made, and only those: right before a herdr build it records the port's
+project folder as trusted in Claude Code's config, the same record Claude Code writes when you
+choose "Yes, I trust this folder". Claude Code in herdr itself still never answers the dialog.
+
+- **What is trusted.** Only `PORTS_ROOT/<slug>/project` of a port that has the bot's `bot.json`,
+  with `PORTS_ROOT` and the folder resolved first (links followed): the port folder must be
+  directly inside `PORTS_ROOT`, its `project` folder inside the port folder, and a path with `..`
+  is refused. Nothing outside `PORTS_ROOT` and not `PORTS_ROOT` itself. Only with the herdr
+  backend.
+- **Where.** `%USERPROFILE%\.claude.json` (from WSL, `/mnt/c/Users/<you>/.claude.json`, the
+  profile asked of `cmd.exe`), or `CLAUDE_CONFIG_JSON`. Claude Code 2.1.332 keeps the answer as
+  `projects["<folder>"].hasTrustDialogAccepted = true`, the folder as Windows sees it with forward
+  slashes (`C:/Projects/ports/app/project`; a folder inside WSL is
+  `//wsl.localhost/<distro>/…`). Only that one key of that one folder is set.
+- **How the file is treated.** It must exist and be valid JSON, or nothing is written and the Log
+  thread says why: the bot never creates or replaces it blindly. The new file is written next to it
+  and renamed over it. Every other value is kept, but the keys come out sorted and spaced the way
+  serde_json writes them (the workspace doesn't enable serde_json's `preserve_order`); a decimal
+  number may come out in a different but equal-valued spelling. Claude Code rewrites the file in
+  its own order at its next save.
+- **What you see.** The Log thread gets "🔓 Trusted <folder> for Claude Code (PRETRUST_PORTS)" when
+  the folder is added, nothing when it was already trusted, and "⚠️ Couldn't trust the project
+  folder…" with the reason when it fails. A failure doesn't stop the build: Claude Code then asks
+  in the pane and the run stops as it does without the flag.
+- **The security trade-off.** Trusting a folder lets Claude Code use that folder's settings, hooks
+  and MCP servers (`.claude/`, `.mcp.json`) without asking. A port's project folder holds what the
+  builder wrote from a partner's app, so with the flag on you accept that what the builder put in
+  it runs with your Windows account the next time Claude Code starts there. Leave the flag off and
+  trust folders by hand if that is not acceptable.
+- **The race that remains.** Claude Code writes the same file. The bot reads it again right before
+  writing and starts over when it changed (three tries), so only the moment between that read and
+  the rename is open. A Claude Code that is running at that moment may also save its own copy later
+  and drop the record; the build then stops at the trust question as it would without the flag,
+  and the next run adds it again.
 
 ## Limits
 

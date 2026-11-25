@@ -145,6 +145,13 @@ under it, except a port that is a git repository of its own (the Discord bot's p
 `GITHUB_OWNER` is set): those need their own folder trusted. (Read from Claude Code's program, not
 tried live: trusting a folder is the person's step.)
 
+The Discord bot can record that answer for the port folders it makes itself, opt-in with
+`PRETRUST_PORTS=1`: it sets `projects["<folder>"].hasTrustDialogAccepted = true` in the Windows
+profile's `.claude.json` (the key and the path form, `C:/…` with forward slashes, read from Claude
+Code 2.1.332's program and its own file) before a herdr build, for nothing outside its
+`PORTS_ROOT`. The adapter still never answers the dialog. Details, the trade-off and the race with
+Claude Code writing the same file: [docs/discord-bot.md](discord-bot.md#trusting-port-folders-for-you).
+
 ### What was checked live, and what wasn't
 
 Checked live (herdr 0.9.3 and Claude Code 2.1.332 on Windows, Craft Anything in WSL, a chat in a
