@@ -1,0 +1,15 @@
+[package]
+name = "craft-anything-discord"
+description = "Discord bot that ports an Android app: /port, the progress board and the rebuild run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
