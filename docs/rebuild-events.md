@@ -42,6 +42,7 @@ in the order they are asked:
 | `note` | `shown`, `pictures` | A note the person added while the run worked. |
 | `ask` | `id`, `kind` (`question`, `approval`), `title`, `detail`, `choices`, `allow_text`, `action` | A question or approval waiting for an answer on stdin. |
 | `checked` | `round`, `check`, `passed`, `similarity` (0-100 or `null`), `note`, `artifacts` | A check finished. |
+| `feature` | `name`, `state` (`planned`, `in_progress`, `ready_to_test`, `passed`, `broken`), `guide`, `note`, `similarity` | A feature of the port was reported or changed by the builder (`build_feature_report`). One event per change, after the report. `guide` is a project-relative path; `guide`, `note` and `similarity` are `null` when none is recorded. |
 | `preview` | `url` | The build can be previewed at this address. |
 | `finished` | `ok`, `paused`, `message` | Last line. `paused` true means the person paused it: not a failure. |
 
@@ -64,5 +65,6 @@ not renamed or removed.
 
 ## Not in this version
 
-- Per-feature progress (`feature` events) is not emitted yet.
+- `feature` events come only from runs with `--user-skills`: only those runs tell the builder to
+  report features. Other runs emit none.
 - Token totals are per turn; the bot sums them if it needs a run total.

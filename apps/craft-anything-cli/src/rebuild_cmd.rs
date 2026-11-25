@@ -255,6 +255,10 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
                         None => println!("[Check {}] {}", c.round, c.note),
                     }
                 }
+                RunEvent::Feature(f) => {
+                    end_line(&mut line_open);
+                    println!("[Feature] {}: {}", f.name, f.state.id());
+                }
                 RunEvent::Preview(url) => println!("Preview: {url}"),
                 RunEvent::Finished { ok: o, message, paused } => {
                     end_line(&mut line_open);

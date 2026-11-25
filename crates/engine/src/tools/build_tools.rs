@@ -218,7 +218,7 @@ pub struct CommandParams {
 }
 
 /// The workspace this session is building, from the inbox a rebuild run attached.
-fn workspace(ctx: &Ctx<'_>) -> Result<Workspace, ToolError> {
+pub(crate) fn workspace(ctx: &Ctx<'_>) -> Result<Workspace, ToolError> {
     inbox(ctx).as_ref().and_then(workspace_of).ok_or_else(|| {
         ToolError::new(ErrorCode::FeatureMissing, "These tools work only while a project is being built.")
             .with_remediation("Start a build (rebuild_start or the app), then use them from the builder.")
@@ -229,7 +229,7 @@ fn workspace(ctx: &Ctx<'_>) -> Result<Workspace, ToolError> {
 /// link that leads out of the project).
 /// Models often write the project's folders from the root (`/app/src/main.rs`): a path like that
 /// whose first folder the project has is read inside the project, where it was meant (#24).
-fn in_project(ws: &Workspace, rel: &str) -> Result<PathBuf, ToolError> {
+pub(crate) fn in_project(ws: &Workspace, rel: &str) -> Result<PathBuf, ToolError> {
     let from_root = rel.trim_start_matches(['/', '\\']);
     let names_a_folder = from_root != rel
         && from_root.split(['/', '\\']).next().is_some_and(|first| !first.is_empty() && (ws.root.join(first).is_dir() || ws.root.join(first) == ws.app_dir()));

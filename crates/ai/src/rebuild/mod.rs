@@ -71,6 +71,9 @@ pub use runs::{RunSet, Started, Stopped, keep_queue_moving};
 pub use stand_in::StandIns;
 
 pub use craft_anything_engine::workspace::Step;
+pub use craft_anything_engine::workspace::features::Feature;
+use craft_anything_engine::tools::feature_tools::FEATURE_REPORT_TOOL;
+use craft_anything_engine::workspace::features;
 
 /// What the UI shows, in order.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +89,8 @@ pub enum RunEvent {
     Ask(Request),
     /// A check finished.
     Checked(CheckResult),
+    /// A feature the builder reported or changed, as now recorded in the project.
+    Feature(Feature),
     /// The build can be previewed here.
     Preview(String),
     Finished {
@@ -659,9 +664,21 @@ const BUILDER_PREAMBLE: &str = "You work inside Craft Anything for a person who 
 ";
 
 /// Added when the person lets the builder use their own Claude Code skills.
-const USER_SKILLS_PREAMBLE: &str = "The person's own Claude Code skills are available through the Skill tool. When the target is an Android package (.apk, .xapk, .apks or .aab), prefer the person's APK-port skill if one is listed. After you finish each feature, write tests/<feature>.md with the sections Goal, Setup, Steps, Expected and Not done yet, so human testers can check it.
+const USER_SKILLS_PREAMBLE: &str = "The person's own Claude Code skills are available through the Skill tool. When the target is an Android package (.apk, .xapk, .apks or .aab), prefer the person's APK-port skill if one is listed. Report each feature of the port with build_feature_report: `planned` once studying the target gives you the list, `in_progress` when you start one, and after you write its guide tests/<feature>.md (sections Goal, Setup, Steps, Expected and Not done yet) report `ready_to_test` with that guide path.
 
 ";
+
+/// The feature records as a run starts. A record that can't be read is logged, and the run's own
+/// first report says so again.
+fn feature_snapshot(root: &Path) -> HashMap<String, Feature> {
+    match features::load(root) {
+        Ok(all) => all.into_iter().map(|f| (f.name.clone(), f)).collect(),
+        Err(e) => {
+            log::warn!("Couldn't read the feature records in {}: {}", root.display(), e.message);
+            HashMap::new()
+        }
+    }
+}
 
 /// The builder's opening instructions.
 fn builder_preamble(user_skills: bool) -> String {
@@ -737,6 +754,19 @@ impl Worker {
     /// Recorded and sent under one lock, so [`RebuildRun::feed_now`] sees each event once.
     fn emit(&self, e: RunEvent) {
         emit_event(&self.feed, &self.tx, &self.wake, e);
+    }
+
+    /// Tells the person about each feature the builder's last report changed. A record that can't
+    /// be read is said as a status line, never passed over.
+    fn relay_features(&self, root: &Path, seen: &mut HashMap<String, Feature>) {
+        match features::load(root) {
+            Ok(all) => {
+                for f in features::changed(&all, seen) {
+                    self.emit(RunEvent::Feature(f));
+                }
+            }
+            Err(e) => self.emit(RunEvent::Agent(AgentEvent::Status { text: format!("Couldn't read the feature progress: {}", e.message) })),
+        }
     }
 
     fn step(&self, ws: &mut Workspace, step: Step, status: Status, text: &str) -> Result<(), ToolError> {
@@ -1467,12 +1497,18 @@ impl Worker {
         // session when its last one finishes: the refresh waits for a free moment, so the loop
         // keeps reading what that tool says meanwhile.
         let mut refresh = false;
+        // The feature records as this run found them: only what its builder changes is reported.
+        let mut features_seen = feature_snapshot(&ws.root);
         loop {
             if self.stop.is_cancelled() {
                 agent.stop();
             }
             for e in agent.poll() {
                 refresh |= matches!(e, AgentEvent::ToolFinished { .. });
+                // A feature report that succeeded changed the record: the records are read after
+                // the agent's event for it, so the feature events follow the report they came from.
+                let feature_reported = matches!(&e, AgentEvent::ToolFinished { tool, ok: true, .. }
+                    if self.engine.registry().canonical(tool) == Some(FEATURE_REPORT_TOOL));
                 if matches!(e, AgentEvent::TurnDone { .. }) {
                     refresh_investigation(&mut self.shown().session(), ws);
                     refresh = false;
@@ -1506,6 +1542,9 @@ impl Worker {
                 // starts a new one (or, with nothing to start it from, the run's error says why).
                 if !(matches!(e, AgentEvent::Error { .. }) && agent.session_lost()) {
                     self.emit(RunEvent::Agent(e));
+                }
+                if feature_reported {
+                    self.relay_features(&ws.root, &mut features_seen);
                 }
                 if done {
                     self.relay_read_notes(ws);

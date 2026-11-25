@@ -92,6 +92,7 @@ fn to_value(e: &RunEvent) -> io::Result<Value> {
             let artifacts: Vec<String> = c.artifacts.iter().map(|p| p.display().to_string()).collect();
             json!({"type": "checked", "round": c.round, "check": c.check, "passed": c.passed, "similarity": c.similarity, "note": c.note, "artifacts": artifacts})
         }
+        RunEvent::Feature(f) => json!({"type": "feature", "name": f.name, "state": f.state, "guide": f.guide, "note": f.note, "similarity": f.similarity}),
         RunEvent::Preview(url) => json!({"type": "preview", "url": url}),
         RunEvent::Finished { ok, message, paused } => json!({"type": "finished", "ok": ok, "paused": paused, "message": message}),
     })
@@ -161,6 +162,7 @@ mod tests {
                 action: None,
                 created_ms: 0,
             }),
+            RunEvent::Feature(serde_json::from_value(json!({"name": "Map", "state": "in_progress"})).unwrap()),
             RunEvent::Preview("http://127.0.0.1:1/".into()),
             RunEvent::Finished { ok: true, message: "Ready.".into(), paused: false },
         ];
@@ -176,6 +178,10 @@ mod tests {
         assert_eq!(v[1]["label"], "Build");
         assert_eq!(v[3]["type"], "tool_started", "agent events keep the chat's type names");
         assert_eq!(v[5]["kind"], "question");
+        assert_eq!(v[6]["type"], "feature");
+        assert_eq!(v[6]["name"], "Map");
+        assert_eq!(v[6]["state"], "in_progress");
+        assert!(v[6]["guide"].is_null() && v[6]["note"].is_null() && v[6]["similarity"].is_null(), "absent fields are null: {}", v[6]);
         assert_eq!(v[v.len() - 1]["type"], "finished");
         assert_eq!(v[v.len() - 1]["ok"], true);
     }
