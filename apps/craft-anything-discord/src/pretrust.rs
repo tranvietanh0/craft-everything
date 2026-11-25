@@ -170,8 +170,7 @@ fn read(config: &Path) -> Result<Vec<u8>, TrustError> {
 /// Claude Code's own runner writes it.
 pub fn with_trust(bytes: &[u8], key: &str, shown: &str) -> Result<Option<Vec<u8>>, TrustError> {
     let shape = |reason: &str| TrustError::ConfigShape { path: shown.to_owned(), reason: reason.to_owned() };
-    let mut root: Value =
-        serde_json::from_slice(bytes).map_err(|e| TrustError::ConfigUnparseable { path: shown.to_owned(), reason: e.to_string() })?;
+    let mut root: Value = serde_json::from_slice(bytes).map_err(|e| TrustError::ConfigUnparseable { path: shown.to_owned(), reason: e.to_string() })?;
     let top = root.as_object_mut().ok_or_else(|| shape("not a JSON object"))?;
     let projects = top.entry("projects").or_insert_with(|| Value::Object(Map::new())).as_object_mut().ok_or_else(|| shape("`projects` isn't an object"))?;
     let entry = projects.entry(key).or_insert_with(|| Value::Object(Map::new())).as_object_mut().ok_or_else(|| shape("the folder's entry isn't an object"))?;
