@@ -71,6 +71,95 @@ It needs Deep mode: a skill can read anything, which Clean room's approval tool 
 the original, so Clean room never gets `Skill` and the run stops with a message saying so. Other
 builders have no such skills, so asking for it with one is refused the same way, not ignored.
 
+## Claude Code in herdr
+
+The backend **Claude Code (herdr)** (agent id `claude-code-herdr`) runs the person's own,
+interactive Claude Code in a pane of [herdr](https://herdr.dev), a terminal workspace manager for
+coding agents, instead of `claude -p`. Every message of it goes there: builds, chats and questions
+about a build. The person can watch each run, and Claude Code uses their own sign-in, settings,
+skills, hooks and rules.
+
+How a conversation runs:
+
+- The project's workspace in herdr is labelled `craft <project folder>`; it is made on first use
+  (`herdr workspace create --cwd … --no-focus`) and reused afterwards. Each conversation opens a
+  pane of its own beside the workspace's first pane (`herdr pane split`), with the same limits and
+  effort a headless run gets set in its environment, and starts Claude Code in it as
+  `craft-<folder>-<b|q|c><hash>` (`herdr agent start … --kind claude`).
+- Claude Code gets the headless adapter's arguments without what only a headless run has: no
+  `-p`, `--output-format`, `--verbose` or `--permission-prompt-tool`. The tool lists
+  (`--tools`, `--allowedTools`, `--disallowedTools`), our MCP server (`--mcp-config`,
+  `--strict-mcp-config`), `--model` and `--resume` are the same. The preamble and the MCP config
+  are written to files (`--append-system-prompt-file`, `--mcp-config <file>`), so nothing long or
+  quoted is typed into the pane's shell. A new session is named with `--session-id`.
+- Each message is typed with `herdr agent prompt` (herdr pastes it as one submission). A message
+  over 20,000 characters goes in a file and the prompt says where to read it.
+- Progress comes from Claude Code's transcript, `<home>/.claude/projects/<folder>/<session>.jsonl`
+  (`<folder>` is the working folder with every character that isn't a letter or digit replaced by
+  `-`). Its entries are read by the headless adapter's own parser, so text, tool calls, the
+  `feature` events and errors come out as before. Usage is added up per model message and priced
+  at list prices (an estimate). A turn is over when the transcript records its end
+  (`turn_duration`) and herdr reports Claude Code idle again.
+- Stopping a turn presses Escape in the pane. When the conversation ends (the build finishes or
+  the app closes) Claude Code is ended with `/exit`, which frees its name; the pane and the
+  workspace stay open so the person can look at what happened. A later run closes panes of
+  earlier runs in the same folder that nothing runs in any more.
+- When Craft Anything runs in WSL and herdr on Windows, paths are mapped (`/mnt/c/x` is `C:\x`,
+  other paths are `\\wsl.localhost\<distro>\…`), and our MCP server is started from Windows as
+  `wsl.exe -d <distro> --exec <craft-anything-cli> mcp …` (`--exec`, so no shell reads the paths
+  again). Claude Code's folder is the Windows profile's `.claude` (asked of `cmd.exe` once).
+- herdr is found from the backend's program setting, else `CRAFT_HERDR`, else `herdr` on PATH,
+  else the newest `~/.herdr/packages/standalone/releases/*/herdr(.exe)` in the home folder herdr
+  runs under. It is offered as a backend when `herdr status` says its server is running.
+
+What is different from the headless adapter:
+
+- **Approvals are the person's, in the pane.** Our approval tool isn't used, so Craft Anything's
+  per-project approval choices and Auto mode don't apply; Claude Code's own permission rules and
+  mode (from the person's settings) do. When Claude Code waits for an answer, herdr reports it as
+  blocked and the run says "Waiting for approval in herdr: …". Questions still come to us
+  (`AskUserQuestion` stays refused; the builder uses `core_person_ask`).
+- **Clean room can't build here.** A Clean room builder needs every read checked by our approval
+  tool; in the pane one click could allow reading the original. Such a run stops with a message
+  instead. Clean room chats and questions are allowed: their file tools are refused with
+  `--disallowedTools`, which no answer in the pane can override.
+- The notes hook isn't passed: from Windows it would have to reach a WSL path through a shell. A
+  note added during a build reaches the builder at its next message.
+- A question forks the builder's session as before; its copy can't be left unwritten
+  (`--no-session-persistence` would leave no transcript to read), so it is deleted when the
+  question is answered.
+
+### Trusting the project folder (once)
+
+Claude Code asks "Do you trust this folder?" the first time it starts in a folder. Craft Anything
+never answers that for the person: herdr reports the dialog as blocked, the dialog is closed with
+"No" (Escape) and the run stops with "Claude Code is asking to trust <folder> in herdr". Seen
+live with Claude Code 2.1.332: herdr's `agent start` reports it ready first and the dialog comes
+right after, so the first moments after a start are watched for it.
+
+To do it once: open a terminal (or the herdr pane) in the folder, run `claude`, choose "Yes, I
+trust this folder", then `/exit`. Trusting a folder above also covers the folders inside it: Claude
+Code 2.1.332's own check walks up the parent folders and stops at the root of the git repository
+the folder is in. So a folder like `C:\Projects\ports` trusted once covers every port
+under it, except a port that is a git repository of its own (the Discord bot's ports are, when
+`GITHUB_OWNER` is set): those need their own folder trusted. (Read from Claude Code's program, not
+tried live: trusting a folder is the person's step.)
+
+### What was checked live, and what wasn't
+
+Checked live (herdr 0.9.3 and Claude Code 2.1.332 on Windows, Craft Anything in WSL, a chat in a
+new folder): the workspace and pane were made, Claude Code was started with the mapped paths
+(`\\wsl.localhost\<distro>\tmp\…\preamble.md`, `…\mcp.json`), `--tools=` and `--session-id`
+arrived as single words, the trust dialog was seen, closed with "No" and reported, and nothing was
+left running. herdr starts `claude.exe` with PowerShell's `Start-Process -ArgumentList` and the
+arguments joined by spaces, so an argument with a space in it would be split: such a run is
+refused with a message naming the argument.
+
+Not checked live yet, because that folder wasn't trusted (trusting it is the person's step): the
+transcript being read during a real turn, the turn's end, `--resume` of a saved session,
+questions, and our MCP server started from Windows through `wsl.exe`. The tests cover the
+arguments, the paths, the transcript reading and the turn's handling of herdr with a stand-in.
+
 ## Chats and questions in Clean room
 
 Outside a build there is no approval tool, so Clean room's rule that nothing inside the original is

@@ -696,7 +696,8 @@ fn check_user_skills(opts: &RunOptions, entry: &crate::BackendEntry, deep: bool)
         return Err(ToolError::invalid("Your Claude Code skills need Deep mode: a skill can read anything, so Clean room can't offer them.")
             .with_remediation("Switch on Deep mode (--deep in the CLI), or leave out --user-skills."));
     }
-    let claude = entry.config.kind == BackendKind::AgentCli && opts.adapters.for_backend(&entry.config.model, &entry.options).ids().contains(&"claude-code");
+    let ids = opts.adapters.for_backend(&entry.config.model, &entry.options).ids();
+    let claude = entry.config.kind == BackendKind::AgentCli && (ids.contains(&"claude-code") || ids.contains(&crate::cli_agents::herdr::ID));
     if !claude {
         return Err(ToolError::invalid(format!("Your Claude Code skills can only be used when Claude Code builds; {} is the builder.", entry.config.name))
             .with_remediation("Choose Claude Code as the builder, or leave out --user-skills."));

@@ -147,7 +147,7 @@ async fn run_one(http: &Http, bot: &Bot, job: &Job) {
         live.ended = None;
         live.board.get_or_insert_with(Board::new);
     }
-    let args = run::rebuild_args(&job.input, &job.target.request(&job.label), &job.port.project, job.target);
+    let args = run::rebuild_args(&job.input, &job.target.request(&job.label), &job.port.project, job.target, bot.config.backend.as_deref());
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let mut progress = Progress::new();
     let end = match run::spawn(&bot.config.craft_cli, args, move |line| {

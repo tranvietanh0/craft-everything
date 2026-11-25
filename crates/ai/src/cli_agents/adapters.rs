@@ -319,6 +319,7 @@ impl AgentAdapters {
         AgentAdapters {
             adapters: vec![
                 Arc::new(ClaudeCode::default()),
+                Arc::new(super::herdr::ClaudeCodeHerdr),
                 Arc::new(Codex),
                 Arc::new(GeminiCli),
                 Arc::new(OpenCode),
@@ -755,7 +756,7 @@ impl AgentAdapter for ClaudeCode {
 /// Claude Code's own folder: `CLAUDE_CONFIG_DIR` when it's set (the person's choice, which the
 /// agent we start keeps too), else our own under a Flatpak (see [`flatpak_claude_dir`]), else
 /// `~/.claude`.
-fn claude_config_dir() -> Option<std::path::PathBuf> {
+pub(crate) fn claude_config_dir() -> Option<std::path::PathBuf> {
     let set = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
     set.or_else(flatpak_claude_dir).or_else(|| dirs::home_dir().map(|h| h.join(".claude")))
 }

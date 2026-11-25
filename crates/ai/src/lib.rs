@@ -168,9 +168,22 @@ impl BackendKind {
             BackendKind::Openrouter => openai::OPENROUTER_MODELS,
             BackendKind::Gemini => openai::GEMINI_MODELS,
             BackendKind::OpenaiCompatible => &[],
-            BackendKind::AgentCli => {
-                &["claude-code", "codex", "copilot", "grok", "gemini-cli", "opencode", "antigravity", "hermes", "maki", "aider", "dsh", "devin", "kimi-code"]
-            }
+            BackendKind::AgentCli => &[
+                "claude-code",
+                "claude-code-herdr",
+                "codex",
+                "copilot",
+                "grok",
+                "gemini-cli",
+                "opencode",
+                "antigravity",
+                "hermes",
+                "maki",
+                "aider",
+                "dsh",
+                "devin",
+                "kimi-code",
+            ],
         }
     }
 
@@ -307,7 +320,9 @@ pub fn effort_levels(config: &BackendConfig) -> &'static [Effort] {
     match config.kind {
         BackendKind::Anthropic => &Effort::ALL,
         // By adapter, not id: Claude Code is also saved as `claude`.
-        BackendKind::AgentCli if cli_agents::adapter_for(&config.model).ids().contains(&"claude-code") => &Effort::ALL,
+        BackendKind::AgentCli if cli_agents::adapter_for(&config.model).ids().iter().any(|id| ["claude-code", cli_agents::herdr::ID].contains(id)) => {
+            &Effort::ALL
+        }
         BackendKind::Gemini => &GEMINI_EFFORTS,
         BackendKind::Openai | BackendKind::Openrouter | BackendKind::OpenaiCompatible => &OPENAI_EFFORTS,
         BackendKind::AgentCli => &[],

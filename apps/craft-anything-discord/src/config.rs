@@ -76,6 +76,9 @@ pub struct Config {
     pub plane: Option<PlaneSettings>,
     /// Optional GitHub repo per port, owned by this user or organisation. On only when `GITHUB_OWNER` is set.
     pub github_owner: Option<String>,
+    /// The craft backend every rebuild uses (`--backend`): `CRAFT_BACKEND`, by default Claude Code
+    /// in herdr. Set to an empty value, no `--backend` is passed and craft picks its own.
+    pub backend: Option<String>,
 }
 
 /// Where the env file is: the `CRAFT_DISCORD_ENV` override, else `<home>/.config/craft-discord/.env`.
@@ -135,6 +138,7 @@ impl Config {
             max_upload_bytes: max_upload_bytes(map)?,
             plane: plane_settings(map)?,
             github_owner: github_owner(map)?,
+            backend: backend(map),
         })
     }
 }
@@ -145,6 +149,17 @@ fn required<'a>(map: &'a BTreeMap<String, String>, key: &'static str) -> Result<
 
 fn optional<'a>(map: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
     map.get(key).map(|v| v.trim()).filter(|v| !v.is_empty())
+}
+
+/// The bot's default backend: the person's own Claude Code, in a herdr pane they can watch.
+pub const DEFAULT_BACKEND: &str = craft_anything_ai::cli_agents::herdr::DISPLAY;
+
+fn backend(map: &BTreeMap<String, String>) -> Option<String> {
+    match map.get("CRAFT_BACKEND").map(|v| v.trim()) {
+        None => Some(DEFAULT_BACKEND.to_owned()),
+        Some("") => None,
+        Some(name) => Some(name.to_owned()),
+    }
 }
 
 const PLANE_KEYS: [&str; 3] = ["PLANE_URL", "PLANE_API_KEY", "PLANE_WORKSPACE"];
@@ -216,6 +231,14 @@ mod tests {
     fn a_complete_env_file_loads() {
         let config = parse_env(&full_env()).and_then(|m| Config::from_map(&m));
         assert!(config.is_ok_and(|c| c.guild_id == 222 && c.max_upload_bytes == DEFAULT_MAX_UPLOAD_MB * BYTES_PER_MB));
+    }
+
+    #[test]
+    fn rebuilds_use_herdr_unless_the_env_file_says_otherwise() {
+        let backend = |extra: &str| parse_env(&format!("{}\n{extra}", full_env())).and_then(|m| Config::from_map(&m)).map(|c| c.backend);
+        assert_eq!(backend(""), Ok(Some(DEFAULT_BACKEND.to_owned())));
+        assert_eq!(backend("CRAFT_BACKEND=Claude Code"), Ok(Some("Claude Code".to_owned())));
+        assert_eq!(backend("CRAFT_BACKEND="), Ok(None), "empty: craft chooses");
     }
 
     #[test]

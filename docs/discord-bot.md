@@ -23,12 +23,16 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
 
    ```sh
    $CRAFT_CLI rebuild <input file> "<request>" --deep --user-skills --unattended \
+     --backend "Claude Code (herdr)" \
      --events ndjson --project-folder $PORTS_ROOT/<slug>/project [--build-with unity]
    ```
 
    The board is edited at most every 3 seconds. Log lines go to the thread in batches. Only
    Unity is a stack the CLI knows, so `target: cocos` and `target: app` name the target in the
    request and let the builder choose the stack.
+
+   The builder is `CRAFT_BACKEND`, by default **Claude Code (herdr)**: your own Claude Code on
+   Windows, in a herdr pane you can watch (see [Claude Code in herdr](#claude-code-in-herdr)).
 6. **End.** The board shows the final state. A run that finished OK mentions the tester role
    (`TESTER_ROLE_ID`). A failed run says why. If the program crashed or stopped without
    finishing, the end of its error output is shown (up to 1500 characters).
@@ -116,6 +120,7 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `PLANE_API_KEY` | no | A Plane API key (see below). Never printed or logged. |
 | `PLANE_WORKSPACE` | no | The workspace slug, as in the Plane address `…/<workspace>/projects/`. |
 | `GITHUB_OWNER` | no | The GitHub user or organisation that gets a private `port-<slug>` repo per port. |
+| `CRAFT_BACKEND` | no | The craft backend that builds (`--backend`). Default `Claude Code (herdr)`; set it empty to pass no `--backend` and let craft choose. |
 
 The three `PLANE_*` keys go together: with none of them Plane is off, and with only some the bot
 stops and names the missing one. Without `GITHUB_OWNER` no repo is made.
@@ -174,8 +179,9 @@ failure of an outage gets one line in the Log thread.
 
 ## Running in WSL
 
-The bot and the rebuilds run inside WSL (Ubuntu). Rebuilds use Claude Code with your own skills
-(`--user-skills`), so in WSL:
+The bot and craft run inside WSL (Ubuntu). By default Claude Code itself runs on Windows through
+herdr (see [Claude Code in herdr](#claude-code-in-herdr)), with your Windows sign-in and skills.
+Only with `CRAFT_BACKEND=Claude Code` does it run in WSL, and then, in WSL:
 
 - install Claude Code and sign in (`claude`, then follow the sign-in);
 - install the skills and MCP servers you want the builder to have, as that same user;
@@ -240,6 +246,32 @@ loginctl enable-linger "$USER"   # keep it running when you are logged out
 
 On Ctrl+C or SIGTERM the bot signs out, and a running rebuild is stopped. A port that was
 stopped is not resumed when the bot starts again. Start it again with `/port`.
+
+## Claude Code in herdr
+
+By default every rebuild runs through herdr on Windows: Claude Code starts in a pane of the
+project's herdr workspace (`craft project`; a pane per run, beside the workspace's first one),
+signed in with your Windows Claude Code and with your full Claude Code setup there (skills, hooks,
+rules). How it works and what it changes:
+[docs/claude-code.md](claude-code.md#claude-code-in-herdr).
+
+- herdr must be running on Windows (`herdr status`). craft in WSL finds it in
+  `%USERPROFILE%\.herdr\packages\standalone\releases\<newest>\herdr.exe`, or wherever
+  `CRAFT_HERDR` (in the bot's environment) points.
+- Approvals happen in the pane. When Claude Code waits for you, the board shows
+  "⏸ Waiting for approval in herdr: …": answer in herdr and the run carries on.
+- **Trust the folder once.** Claude Code asks "Do you trust this folder?" the first time it
+  starts in a folder, and craft never answers that for you: the run stops with "Claude Code is
+  asking to trust <folder> in herdr". Open a terminal in that folder (as Windows sees it: `C:\…`,
+  or `\\wsl.localhost\<distro>\…` for a folder inside WSL), run `claude`, choose "Yes, I trust this
+  folder", type `/exit`, then `/port` again. Trusting `PORTS_ROOT` itself once covers the ports
+  under it, except a port that is a git repository of its own (with `GITHUB_OWNER` set): Claude
+  Code stops looking for a trusted folder at the repository's root.
+- Builds need Deep mode, which the bot always uses: Clean room can't build through herdr.
+- When a run ends, Claude Code exits and its pane stays for you to look at; the next run in that
+  folder closes it.
+
+To build headless again (Claude Code in WSL, `claude -p`), set `CRAFT_BACKEND=Claude Code`.
 
 ## Limits
 

@@ -65,6 +65,9 @@ struct Declared {
 /// ride the session; a per-message row's are checked against its arguments and environment.
 const DECLARED: &[Declared] = &[
     Declared { id: "claude-code", path: Path::Argv, tool_server: Given::Yes, approvals: Given::Yes, mid_turn_notes: Given::Yes },
+    // Claude Code in a herdr pane: the person approves in the pane, not our approval policy, and
+    // the notes hook is left out (from Windows it would have to reach a WSL path through a shell).
+    Declared { id: "claude-code-herdr", path: Path::Argv, tool_server: Given::Yes, approvals: Given::No, mid_turn_notes: Given::No },
     // `codex exec` can't stop to ask anyone, so a tool is either pre-approved or refused by the
     // person's own Codex policy (#540); commands stay inside Codex's sandbox.
     Declared { id: "codex", path: Path::Argv, tool_server: Given::Yes, approvals: Given::No, mid_turn_notes: Given::No },

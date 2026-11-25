@@ -68,11 +68,14 @@ impl Target {
 }
 
 /// The arguments after `CRAFT_CLI` for one port (Deep mode, the person's own skills, unattended,
-/// events on stdout, a fresh project folder).
-pub fn rebuild_args(input: &Path, request: &str, project: &Path, target: Target) -> Vec<OsString> {
+/// events on stdout, a fresh project folder), with `backend` as the builder when one is set.
+pub fn rebuild_args(input: &Path, request: &str, project: &Path, target: Target, backend: Option<&str>) -> Vec<OsString> {
     let mut args: Vec<OsString> = vec!["rebuild".into(), input.into(), request.into()];
     for flag in ["--deep", "--user-skills", "--unattended"] {
         args.push(flag.into());
+    }
+    if let Some(backend) = backend {
+        args.extend(["--backend".into(), backend.into()]);
     }
     args.extend(["--events".into(), "ndjson".into(), "--project-folder".into(), project.into()]);
     if let Some(stack) = target.build_with() {
@@ -155,7 +158,7 @@ mod tests {
     fn args(target: Target) -> Vec<String> {
         let input = PathBuf::from("/ports/snake/input/snake.apk");
         let project = PathBuf::from("/ports/snake/project");
-        rebuild_args(&input, "Port it", &project, target).iter().map(|a| a.to_string_lossy().into_owned()).collect()
+        rebuild_args(&input, "Port it", &project, target, Some("Claude Code (herdr)")).iter().map(|a| a.to_string_lossy().into_owned()).collect()
     }
 
     fn after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -174,6 +177,10 @@ mod tests {
         assert_eq!(after(&a, "--events"), Some("ndjson"));
         assert_eq!(after(&a, "--project-folder"), Some("/ports/snake/project"));
         assert_eq!(after(&a, "--build-with"), Some("unity"));
+        assert_eq!(after(&a, "--backend"), Some("Claude Code (herdr)"), "the backend is one argument");
+        let input = PathBuf::from("/in.apk");
+        let none = rebuild_args(&input, "Port it", &input, Target::App, None);
+        assert!(!none.iter().any(|a| a == "--backend"), "no backend: craft chooses");
     }
 
     #[test]
