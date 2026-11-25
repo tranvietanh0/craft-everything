@@ -53,9 +53,14 @@ fn load_config() -> Result<Config, String> {
 
 struct Stderr(log::LevelFilter);
 
+/// Our own log targets start with this; everything else (serenity's request spans) is only
+/// shown from `warn` up, as it logs every HTTP request at `info`.
+const OWN_TARGETS: &str = "craft_anything";
+
 impl log::Log for Stderr {
     fn enabled(&self, m: &log::Metadata<'_>) -> bool {
-        m.level() <= self.0
+        let limit = if m.target().starts_with(OWN_TARGETS) { self.0 } else { self.0.min(log::LevelFilter::Warn) };
+        m.level() <= limit
     }
 
     fn log(&self, r: &log::Record<'_>) {

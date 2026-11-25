@@ -117,7 +117,13 @@ pub fn verdict(finished: Option<&Finished>, end: &ChildEnd) -> Verdict {
         Some(f) if f.ok && end.success => Verdict { ok: true, paused: false, message: f.message.clone(), mention_testers: true, stderr_tail: None },
         Some(f) if !f.ok => Verdict { ok: false, paused: f.paused, message: f.message.clone(), mention_testers: false, stderr_tail: None },
         Some(_) => Verdict { ok: false, paused: false, message: exit_message(end), mention_testers: false, stderr_tail: tail() },
-        None => Verdict { ok: false, paused: false, message: format!("The rebuild stopped without finishing ({})", exit_text(end)), mention_testers: false, stderr_tail: tail() },
+        None => Verdict {
+            ok: false,
+            paused: false,
+            message: format!("The rebuild stopped without finishing ({})", exit_text(end)),
+            mention_testers: false,
+            stderr_tail: tail(),
+        },
     }
 }
 
@@ -138,13 +144,7 @@ pub fn tail_chars(text: &str, max: usize) -> String {
 /// Starts `craft_cli` with `args`; every stdout line goes to `on_line`. stdin is closed (the run
 /// is unattended). Drop or kill the handle to stop the whole process group.
 pub fn spawn(craft_cli: &Path, args: Vec<OsString>, on_line: impl Fn(&str) + Send + Sync + 'static) -> Result<RunningProcess, ToolError> {
-    Process::new(craft_cli)
-        .args(args)
-        .label("craft-anything-cli rebuild")
-        .timeout(RUN_LIMIT)
-        .stdout_cap(STDOUT_KEEP)
-        .on_stdout_line(on_line)
-        .spawn()
+    Process::new(craft_cli).args(args).label("craft-anything-cli rebuild").timeout(RUN_LIMIT).stdout_cap(STDOUT_KEEP).on_stdout_line(on_line).spawn()
 }
 
 #[cfg(test)]

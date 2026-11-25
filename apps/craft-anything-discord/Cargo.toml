@@ -17,8 +17,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 # Discord gateway and REST: slash commands, buttons, channels, embeds and threads. No standard
-# (prefix) framework; TLS through rustls.
-serenity = { version = "0.12", default-features = false, features = ["builder", "cache", "chrono", "client", "collector", "gateway", "http", "model", "rustls_backend", "utils"] }
+# (prefix) framework. TLS through the system's (native-tls; OpenSSL on Linux): serenity 0.12's
+# rustls backend pins tokio-tungstenite 0.21 and with it rustls 0.22 and rustls-webpki 0.102,
+# which have open RustSec advisories that no 0.12 release can take a fix for.
+serenity = { version = "0.12", default-features = false, features = ["builder", "cache", "chrono", "client", "collector", "gateway", "http", "model", "native_tls_backend", "utils"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 # Downloads (attachments and links), the same blocking client crates/ai and crates/engines use.
 ureq = "3"

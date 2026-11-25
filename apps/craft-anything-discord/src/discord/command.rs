@@ -9,9 +9,8 @@ const MAX_NAME_LENGTH: u16 = 80;
 /// `/port apk:<file> link:<url> target:<unity|cocos|app> name:<text>`; one of `apk` or `link`
 /// is required, which Discord can't express, so [`craft_anything_discord::intake::Source::choose`] checks it.
 pub fn port_command() -> CreateCommand {
-    let target = Target::CHOICES
-        .iter()
-        .fold(CreateCommandOption::new(CommandOptionType::String, "target", "What to rebuild it as (default: Unity)"), |option, t| {
+    let target =
+        Target::CHOICES.iter().fold(CreateCommandOption::new(CommandOptionType::String, "target", "What to rebuild it as (default: Unity)"), |option, t| {
             option.add_string_choice(t.label(), t.choice())
         });
     CreateCommand::new(PORT)

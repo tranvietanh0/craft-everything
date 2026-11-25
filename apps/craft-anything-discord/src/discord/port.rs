@@ -1,10 +1,10 @@
 //! One `/port`: porter-role check, the rights confirmation, the download and identification, the
 //! `port-<slug>` channel with its pinned profile and board and its "Log" thread, then the queue.
 
+use super::Bot;
 use super::command::{self, PortOptions};
 use super::embeds;
 use super::runner::{self, Job};
-use super::Bot;
 use craft_anything_discord::board::Board;
 use craft_anything_discord::identify::{self, AppIdentity};
 use craft_anything_discord::intake::{self, Source};
@@ -96,7 +96,8 @@ async fn confirm(ctx: &Context, cmd: &CommandInteraction, options: &PortOptions,
 async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options: &PortOptions, source: &Source) -> Result<(), String> {
     let config = &bot.config;
     let guild = GuildId::new(config.guild_id);
-    let base_name = options.name.clone().or_else(|| source.suggested_name().map(|n| identify::name_from_file(Path::new(&n)))).unwrap_or_else(|| "app".to_owned());
+    let base_name =
+        options.name.clone().or_else(|| source.suggested_name().map(|n| identify::name_from_file(Path::new(&n)))).unwrap_or_else(|| "app".to_owned());
     let channels = guild.channels(&ctx.http).await.map_err(|e| format!("couldn't list the server's channels: {e}"))?;
     let taken: Vec<String> = channels.values().map(|c| c.name.clone()).collect();
     let (name, slug) = reserve_slug(&config.ports_root, &slug::slugify(&base_name), taken)?;
@@ -126,15 +127,8 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
         .map_err(|e| format!("couldn't create the Log thread: {e}"))?
         .id;
 
-    let job = Job {
-        channel,
-        board_message: board.id,
-        thread,
-        input: file,
-        project: intake::project_dir(&config.ports_root, &slug),
-        target: options.target,
-        label,
-    };
+    let job =
+        Job { channel, board_message: board.id, thread, input: file, project: intake::project_dir(&config.ports_root, &slug), target: options.target, label };
     let admission = bot.queue.lock().await.submit(job);
     match admission {
         Admission::Start(job) => {

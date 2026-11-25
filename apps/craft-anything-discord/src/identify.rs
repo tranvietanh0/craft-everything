@@ -55,8 +55,10 @@ pub fn find_label(page: &Value, id: &str) -> Option<String> {
 
 /// A readable name from the file: its stem, with `_` and `-` as spaces.
 pub fn name_from_file(path: &Path) -> String {
-    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let name = stem.replace(['_', '-'], " ");
+    // Not `Path::file_stem`: it keeps a dot file such as `.apk` whole.
+    let file = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = file.rsplit_once('.').map_or(file.as_str(), |(stem, _)| stem);
+    let name = stem.replace(['_', '-', '.'], " ");
     let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
     if name.is_empty() { "app".to_owned() } else { name }
 }
