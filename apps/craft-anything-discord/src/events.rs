@@ -26,22 +26,80 @@ pub enum LineError {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
-    Project { dir: String },
-    Step { step: String, label: String, text: String },
-    AgentText { text: String },
-    Status { text: String },
-    Output { text: String },
-    ToolStarted { call_id: String, tool: String },
-    ToolFinished { call_id: String, tool: String, ok: bool, summary: String },
-    ConsentNeeded { call_id: String, tool: String, title: String },
-    TurnDone { backend: String, input_tokens: u64, output_tokens: u64, tokens_unknown: bool, cost_usd: Option<f64>, cost_is_estimate: bool },
-    Error { message: String, remediation: Option<String>, log: Option<String> },
+    Project {
+        dir: String,
+    },
+    Step {
+        step: String,
+        label: String,
+        text: String,
+    },
+    AgentText {
+        text: String,
+    },
+    Status {
+        text: String,
+    },
+    Output {
+        text: String,
+    },
+    ToolStarted {
+        call_id: String,
+        tool: String,
+    },
+    ToolFinished {
+        call_id: String,
+        tool: String,
+        ok: bool,
+        summary: String,
+    },
+    ConsentNeeded {
+        call_id: String,
+        tool: String,
+        title: String,
+    },
+    TurnDone {
+        backend: String,
+        input_tokens: u64,
+        output_tokens: u64,
+        tokens_unknown: bool,
+        cost_usd: Option<f64>,
+        cost_is_estimate: bool,
+    },
+    Error {
+        message: String,
+        remediation: Option<String>,
+        log: Option<String>,
+    },
     Note {},
-    Ask { id: String, kind: String, title: String },
-    Checked { round: u64, check: String, passed: bool, similarity: Option<f64>, note: Option<String> },
-    Feature { name: String, state: String, guide: Option<String>, note: Option<String>, similarity: Option<f64> },
-    Preview { url: String },
-    Finished { ok: bool, #[serde(default)] paused: bool, message: String },
+    Ask {
+        id: String,
+        kind: String,
+        title: String,
+    },
+    Checked {
+        round: u64,
+        check: String,
+        passed: bool,
+        similarity: Option<f64>,
+        note: Option<String>,
+    },
+    Feature {
+        name: String,
+        state: String,
+        guide: Option<String>,
+        note: Option<String>,
+        similarity: Option<f64>,
+    },
+    Preview {
+        url: String,
+    },
+    Finished {
+        ok: bool,
+        #[serde(default)]
+        paused: bool,
+        message: String,
+    },
     /// Any `type` not listed above (serde's catch-all for internally tagged enums).
     #[serde(other)]
     Other,
@@ -81,7 +139,9 @@ mod tests {
 
     #[test]
     fn turn_done_accepts_a_null_cost() {
-        let e = event(r#"{"type":"turn_done","backend":"Claude Code","input_tokens":10,"output_tokens":4,"tokens_unknown":false,"cost_usd":null,"cost_is_estimate":true}"#);
+        let e = event(
+            r#"{"type":"turn_done","backend":"Claude Code","input_tokens":10,"output_tokens":4,"tokens_unknown":false,"cost_usd":null,"cost_is_estimate":true}"#,
+        );
         assert!(matches!(e, Event::TurnDone { cost_usd: None, input_tokens: 10, .. }));
     }
 

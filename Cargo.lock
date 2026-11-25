@@ -1405,6 +1405,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-anything-discord"
+version = "0.6.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "craft-anything-engine"
 version = "0.6.1"
 dependencies = [

@@ -121,11 +121,8 @@ impl Usage {
         if self.turns == 0 {
             return "no agent turns yet".to_owned();
         }
-        let tokens = if self.tokens_known {
-            format!("{} tokens", self.input_tokens.saturating_add(self.output_tokens))
-        } else {
-            "token count unknown".to_owned()
-        };
+        let tokens =
+            if self.tokens_known { format!("{} tokens", self.input_tokens.saturating_add(self.output_tokens)) } else { "token count unknown".to_owned() };
         let cost = match self.cost_usd {
             Some(c) if self.cost_is_estimate => format!(" · ${c:.4} (estimate)"),
             Some(c) => format!(" · ${c:.4}"),

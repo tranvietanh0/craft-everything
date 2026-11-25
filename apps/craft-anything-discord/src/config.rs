@@ -129,11 +129,7 @@ fn required<'a>(map: &'a BTreeMap<String, String>, key: &'static str) -> Result<
 }
 
 fn snowflake(map: &BTreeMap<String, String>, key: &'static str) -> Result<u64, ConfigError> {
-    required(map, key)?
-        .parse::<u64>()
-        .ok()
-        .filter(|id| *id > 0)
-        .ok_or_else(|| ConfigError::Invalid { key, reason: "expected a numeric Discord ID".to_owned() })
+    required(map, key)?.parse::<u64>().ok().filter(|id| *id > 0).ok_or_else(|| ConfigError::Invalid { key, reason: "expected a numeric Discord ID".to_owned() })
 }
 
 fn max_upload_bytes(map: &BTreeMap<String, String>) -> Result<u64, ConfigError> {

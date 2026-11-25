@@ -42,7 +42,10 @@ mod tests {
 
     #[test]
     fn board_only_events_stay_off_the_log() {
-        assert_eq!(line_for(r#"{"type":"turn_done","backend":"x","input_tokens":1,"output_tokens":1,"tokens_unknown":false,"cost_usd":null,"cost_is_estimate":true}"#), None);
+        assert_eq!(
+            line_for(r#"{"type":"turn_done","backend":"x","input_tokens":1,"output_tokens":1,"tokens_unknown":false,"cost_usd":null,"cost_is_estimate":true}"#),
+            None
+        );
         assert_eq!(line_for(r#"{"type":"finished","ok":true,"message":"done"}"#), None);
     }
 
