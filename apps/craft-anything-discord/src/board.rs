@@ -1,7 +1,10 @@
 //! The progress board: the state a `rebuild` run leaves behind, folded from events, and rendered to
-//! plain view data. No Discord types and no clock: the caller passes the elapsed time to [`Board::render`].
+//! plain view data. No Discord types and no clock: the caller passes the elapsed time and the usage
+//! line to [`Board::render`] (usage is kept per job, [`crate::jobs`]). The board is saved in
+//! `bot.json`, so a restarted bot draws the last one again.
 
 use crate::events::Event;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::time::Duration;
 
@@ -9,7 +12,8 @@ const SECS_PER_MINUTE: u64 = 60;
 const SECS_PER_HOUR: u64 = 3_600;
 
 /// The four stages a run goes through, in order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Stage {
     Study,
     Build,
@@ -41,7 +45,8 @@ impl Stage {
 }
 
 /// The builder's state for one feature, as the `feature` event reports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FeatureState {
     Planned,
     InProgress,
@@ -74,72 +79,28 @@ impl FeatureState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Outcome {
     ok: bool,
     paused: bool,
     message: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct CheckResult {
     check: String,
     passed: bool,
     similarity: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct Usage {
-    turns: u64,
-    tokens_known: bool,
-    input_tokens: u64,
-    output_tokens: u64,
-    cost_usd: Option<f64>,
-    cost_is_estimate: bool,
-}
-
-impl Default for Usage {
-    fn default() -> Self {
-        Usage { turns: 0, tokens_known: true, input_tokens: 0, output_tokens: 0, cost_usd: None, cost_is_estimate: false }
-    }
-}
-
-impl Usage {
-    /// Sums the turns: the contract leaves totals to the consumer.
-    fn add_turn(&mut self, input: u64, output: u64, tokens_unknown: bool, cost: Option<f64>, estimate: bool) {
-        self.turns = self.turns.saturating_add(1);
-        self.tokens_known &= !tokens_unknown;
-        self.input_tokens = self.input_tokens.saturating_add(input);
-        self.output_tokens = self.output_tokens.saturating_add(output);
-        if let Some(c) = cost {
-            self.cost_usd = Some(self.cost_usd.unwrap_or(0.0) + c);
-        }
-        self.cost_is_estimate |= estimate;
-    }
-
-    fn describe(&self) -> String {
-        if self.turns == 0 {
-            return "no agent turns yet".to_owned();
-        }
-        let tokens =
-            if self.tokens_known { format!("{} tokens", self.input_tokens.saturating_add(self.output_tokens)) } else { "token count unknown".to_owned() };
-        let cost = match self.cost_usd {
-            Some(c) if self.cost_is_estimate => format!(" · ${c:.4} (estimate)"),
-            Some(c) => format!(" · ${c:.4}"),
-            None => String::new(),
-        };
-        format!("{tokens} over {} turns{cost}", self.turns)
-    }
-}
-
 /// Folds events into the board state. Events it does not show (agent text, tool calls) are ignored
 /// here; [`crate::log::log_line`] sends them to the Log thread.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Board {
     stage: Option<Stage>,
     status: Option<String>,
     error: Option<String>,
-    usage: Usage,
     last_check: Option<CheckResult>,
     features: Vec<(String, FeatureState)>,
     preview: Option<String>,
@@ -165,9 +126,6 @@ impl Board {
                 self.error = None;
             }
             Event::Error { message, .. } => self.error = Some(message.clone()),
-            Event::TurnDone { input_tokens, output_tokens, tokens_unknown, cost_usd, cost_is_estimate, .. } => {
-                self.usage.add_turn(*input_tokens, *output_tokens, *tokens_unknown, *cost_usd, *cost_is_estimate);
-            }
             Event::Checked { check, passed, similarity, .. } => {
                 self.last_check = Some(CheckResult { check: check.clone(), passed: *passed, similarity: *similarity });
             }
@@ -182,6 +140,21 @@ impl Board {
             }
             _ => {}
         }
+    }
+
+    /// A new run on the same port: its features stay, the last run's result and error go.
+    pub fn restart(&mut self) {
+        self.outcome = None;
+        self.error = None;
+    }
+
+    pub fn stage(&self) -> Option<Stage> {
+        self.stage
+    }
+
+    /// Every feature the builder reported, in first-reported order, with its latest state.
+    pub fn features(&self) -> &[(String, FeatureState)] {
+        &self.features
     }
 
     fn set_feature(&mut self, name: &str, state: FeatureState) {
@@ -221,12 +194,13 @@ impl Board {
         }
     }
 
-    pub fn render(&self, elapsed: Duration) -> BoardView {
+    /// `usage` is the line shown in the Usage field ([`crate::jobs::usage_line`]).
+    pub fn render(&self, elapsed: Duration, usage: String) -> BoardView {
         BoardView {
             steps: Stage::ALL.iter().map(|&s| StepRow { label: s.label(), marker: self.step_marker(s) }).collect(),
             activity: self.activity(),
             elapsed: format_elapsed(elapsed),
-            usage: self.usage.describe(),
+            usage,
             last_check: self.last_check.as_ref().map(describe_check),
             features: self.features.iter().map(|(name, state)| format!("{} {name}", state.icon())).collect(),
             preview: self.preview.clone(),
@@ -300,9 +274,9 @@ mod tests {
     fn a_stage_is_done_once_its_successor_starts() {
         let mut board = Board::new();
         feed(&mut board, &[STUDY]);
-        assert_eq!(markers(&board.render(Duration::ZERO)), ["🔄", "⏳", "⏳", "⏳"]);
+        assert_eq!(markers(&board.render(Duration::ZERO, String::new())), ["🔄", "⏳", "⏳", "⏳"]);
         feed(&mut board, &[BUILD]);
-        assert_eq!(markers(&board.render(Duration::ZERO)), ["✅", "🔄", "⏳", "⏳"]);
+        assert_eq!(markers(&board.render(Duration::ZERO, String::new())), ["✅", "🔄", "⏳", "⏳"]);
     }
 
     #[test]
@@ -310,23 +284,23 @@ mod tests {
         let mut board = Board::new();
         let waiting = format!(r#"{{"type":"status","text":"{}: it is asking you."}}"#, craft_anything_ai::cli_agents::herdr::WAITING_STATUS);
         feed(&mut board, &[BUILD, &waiting]);
-        assert!(board.render(Duration::ZERO).activity.starts_with('⏸'), "{}", board.render(Duration::ZERO).activity);
+        assert!(board.render(Duration::ZERO, String::new()).activity.starts_with('⏸'), "{}", board.render(Duration::ZERO, String::new()).activity);
         feed(&mut board, &[r#"{"type":"status","text":"Asking Claude Code (herdr)…"}"#]);
-        assert!(!board.render(Duration::ZERO).activity.starts_with('⏸'));
+        assert!(!board.render(Duration::ZERO, String::new()).activity.starts_with('⏸'));
     }
 
     #[test]
     fn a_passed_run_shows_every_stage_done() {
         let mut board = Board::new();
         feed(&mut board, &[STUDY, BUILD, r#"{"type":"finished","ok":true,"message":"Ready"}"#]);
-        assert_eq!(markers(&board.render(Duration::ZERO)), ["✅", "✅", "✅", "✅"]);
+        assert_eq!(markers(&board.render(Duration::ZERO, String::new())), ["✅", "✅", "✅", "✅"]);
     }
 
     #[test]
     fn a_failed_run_marks_the_current_stage_failed() {
         let mut board = Board::new();
         feed(&mut board, &[STUDY, BUILD, r#"{"type":"finished","ok":false,"message":"Build broke"}"#]);
-        let view = board.render(Duration::ZERO);
+        let view = board.render(Duration::ZERO, String::new());
         assert_eq!(markers(&view), ["✅", "❌", "⏳", "⏳"]);
         assert_eq!(view.outcome.as_deref(), Some("❌ Build broke"));
     }
@@ -342,48 +316,50 @@ mod tests {
                 r#"{"type":"feature","name":"Login","state":"passed","guide":null,"note":null,"similarity":91.0}"#,
             ],
         );
-        assert_eq!(board.render(Duration::ZERO).features, ["✅ Login", "🔨 Shop"]);
+        assert_eq!(board.render(Duration::ZERO, String::new()).features, ["✅ Login", "🔨 Shop"]);
     }
 
     #[test]
     fn a_feature_with_an_unknown_state_is_ignored() {
         let mut board = Board::new();
         feed(&mut board, &[r#"{"type":"feature","name":"X","state":"someday","guide":null,"note":null,"similarity":null}"#]);
-        assert!(board.render(Duration::ZERO).features.is_empty());
+        assert!(board.render(Duration::ZERO, String::new()).features.is_empty());
     }
 
     #[test]
-    fn usage_sums_turns_and_marks_estimates() {
+    fn a_saved_board_draws_the_same_after_loading() {
         let mut board = Board::new();
-        feed(
-            &mut board,
-            &[
-                r#"{"type":"turn_done","backend":"Claude Code","input_tokens":100,"output_tokens":20,"tokens_unknown":false,"cost_usd":0.25,"cost_is_estimate":true}"#,
-                r#"{"type":"turn_done","backend":"Claude Code","input_tokens":50,"output_tokens":5,"tokens_unknown":false,"cost_usd":null,"cost_is_estimate":false}"#,
-            ],
-        );
-        assert_eq!(board.render(Duration::ZERO).usage, "175 tokens over 2 turns · $0.2500 (estimate)");
+        feed(&mut board, &[STUDY, BUILD, r#"{"type":"feature","name":"Map","state":"ready_to_test","guide":null,"note":null,"similarity":null}"#]);
+        let saved = serde_json::to_string(&board).unwrap();
+        let loaded: Board = serde_json::from_str(&saved).unwrap();
+        assert_eq!(loaded.render(Duration::ZERO, String::new()), board.render(Duration::ZERO, String::new()));
     }
 
     #[test]
-    fn no_turns_says_so() {
-        assert_eq!(Board::new().render(Duration::ZERO).usage, "no agent turns yet");
+    fn a_restart_clears_the_last_result_but_keeps_the_features() {
+        let mut board = Board::new();
+        feed(&mut board, &[BUILD, r#"{"type":"feature","name":"Map","state":"passed","guide":null,"note":null,"similarity":null}"#]);
+        feed(&mut board, &[r#"{"type":"finished","ok":false,"message":"Build broke"}"#]);
+        board.restart();
+        let view = board.render(Duration::ZERO, String::new());
+        assert!(view.outcome.is_none());
+        assert_eq!(view.features.len(), 1);
     }
 
     #[test]
     fn an_error_replaces_the_activity_until_the_next_step() {
         let mut board = Board::new();
         feed(&mut board, &[STUDY, r#"{"type":"error","message":"tool crashed","remediation":null,"log":null}"#]);
-        assert_eq!(board.render(Duration::ZERO).activity, "⚠️ tool crashed");
+        assert_eq!(board.render(Duration::ZERO, String::new()).activity, "⚠️ tool crashed");
         feed(&mut board, &[BUILD]);
-        assert_eq!(board.render(Duration::ZERO).activity, "Building");
+        assert_eq!(board.render(Duration::ZERO, String::new()).activity, "Building");
     }
 
     #[test]
     fn the_last_check_is_shown_with_its_similarity() {
         let mut board = Board::new();
         feed(&mut board, &[r#"{"type":"checked","round":1,"check":"build","passed":false,"similarity":null,"note":null,"artifacts":[]}"#]);
-        assert_eq!(board.render(Duration::ZERO).last_check.as_deref(), Some("❌ build: failed, similarity n/a"));
+        assert_eq!(board.render(Duration::ZERO, String::new()).last_check.as_deref(), Some("❌ build: failed, similarity n/a"));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 use craft_anything_evidence::ToolError;
 use craft_anything_platform::process::{Process, RunningProcess};
+use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
@@ -11,11 +12,18 @@ use std::time::Duration;
 pub const RUN_LIMIT: Duration = Duration::from_secs(24 * 60 * 60);
 /// Most characters of the child's stderr shown when it fails without finishing.
 pub const STDERR_TAIL_CHARS: usize = 1_500;
+/// How long `/stop` gives the CLI to stop its run before the whole process group is killed. The
+/// CLI stops on SIGTERM as on Ctrl+C: it stops the builder (under herdr it presses Escape in the
+/// pane) and prints `finished`.
+pub const STOP_GRACE: Duration = Duration::from_secs(30);
+/// How long to wait for the kill to be confirmed after the grace.
+const KILL_WAIT: Duration = Duration::from_secs(10);
 /// stdout is streamed line by line; only this much is kept in memory as well.
 const STDOUT_KEEP: usize = 256 * 1024;
 
 /// What the port is rebuilt as (the `/port` `target` choice).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Target {
     #[default]
     Unity,
@@ -67,18 +75,48 @@ impl Target {
     }
 }
 
-/// The arguments after `CRAFT_CLI` for one port (Deep mode, the person's own skills, unattended,
-/// events on stdout, a fresh project folder), with `backend` as the builder when one is set.
-pub fn rebuild_args(input: &Path, request: &str, project: &Path, target: Target, backend: Option<&str>) -> Vec<OsString> {
-    let mut args: Vec<OsString> = vec!["rebuild".into(), input.into(), request.into()];
+/// How a run starts on the port's project folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum How {
+    /// The folder holds no project yet: a new one, with its stack.
+    New,
+    /// The folder already holds a project: the request is a follow-up and the stack stays
+    /// (`rebuild` refuses `--build-with` there). `/retry` runs this way.
+    FollowUp,
+    /// Carry on where the project's last run stopped (`--continue-in <project> --resume`); the
+    /// request is ignored. `/resume` runs this way.
+    Resume,
+}
+
+impl How {
+    /// A resume needs a project to continue; without one the run starts new.
+    pub fn choose(resume: bool, project_exists: bool) -> How {
+        match (resume, project_exists) {
+            (_, false) => How::New,
+            (true, true) => How::Resume,
+            (false, true) => How::FollowUp,
+        }
+    }
+}
+
+/// The arguments after `CRAFT_CLI` for one run (Deep mode, the person's own skills, unattended,
+/// events on stdout, the port's project folder), with `backend` as the builder when one is set.
+pub fn rebuild_args(input: &Path, request: &str, project: &Path, target: Target, backend: Option<&str>, how: How) -> Vec<OsString> {
+    // A resumed project keeps its saved target, so none is given.
+    let target_arg: OsString = if how == How::Resume { "-".into() } else { input.into() };
+    let mut args: Vec<OsString> = vec!["rebuild".into(), target_arg, request.into()];
     for flag in ["--deep", "--user-skills", "--unattended"] {
         args.push(flag.into());
     }
     if let Some(backend) = backend {
         args.extend(["--backend".into(), backend.into()]);
     }
-    args.extend(["--events".into(), "ndjson".into(), "--project-folder".into(), project.into()]);
-    if let Some(stack) = target.build_with() {
+    args.extend(["--events".into(), "ndjson".into()]);
+    match how {
+        How::Resume => args.extend(["--continue-in".into(), project.into(), "--resume".into()]),
+        How::New | How::FollowUp => args.extend(["--project-folder".into(), project.into()]),
+    }
+    if let (How::New, Some(stack)) = (how, target.build_with()) {
         args.extend(["--build-with".into(), stack.into()]);
     }
     args
@@ -150,6 +188,12 @@ pub fn spawn(craft_cli: &Path, args: Vec<OsString>, on_line: impl Fn(&str) + Sen
     Process::new(craft_cli).args(args).label("craft-anything-cli rebuild").timeout(RUN_LIMIT).stdout_cap(STDOUT_KEEP).on_stdout_line(on_line).spawn()
 }
 
+/// Stops a running rebuild cleanly: asks the CLI to stop (SIGTERM), waits up to [`STOP_GRACE`],
+/// then kills the whole group. Blocking. Returns whether the end was confirmed.
+pub fn stop(child: &mut RunningProcess) -> bool {
+    child.close_and_wait(None, STOP_GRACE, KILL_WAIT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,7 +202,7 @@ mod tests {
     fn args(target: Target) -> Vec<String> {
         let input = PathBuf::from("/ports/snake/input/snake.apk");
         let project = PathBuf::from("/ports/snake/project");
-        rebuild_args(&input, "Port it", &project, target, Some("Claude Code (herdr)")).iter().map(|a| a.to_string_lossy().into_owned()).collect()
+        rebuild_args(&input, "Port it", &project, target, Some("Claude Code (herdr)"), How::New).iter().map(|a| a.to_string_lossy().into_owned()).collect()
     }
 
     fn after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -179,8 +223,24 @@ mod tests {
         assert_eq!(after(&a, "--build-with"), Some("unity"));
         assert_eq!(after(&a, "--backend"), Some("Claude Code (herdr)"), "the backend is one argument");
         let input = PathBuf::from("/in.apk");
-        let none = rebuild_args(&input, "Port it", &input, Target::App, None);
+        let none = rebuild_args(&input, "Port it", &input, Target::App, None, How::New);
         assert!(!none.iter().any(|a| a == "--backend"), "no backend: craft chooses");
+    }
+
+    #[test]
+    fn a_resume_continues_the_folder_and_a_follow_up_keeps_its_stack() {
+        let (input, project) = (PathBuf::from("/ports/snake/input/snake.apk"), PathBuf::from("/ports/snake/project"));
+        let text =
+            |how| rebuild_args(&input, "Port it", &project, Target::Unity, None, how).iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>();
+        let resume = text(How::Resume);
+        assert_eq!(after(&resume, "--continue-in"), Some("/ports/snake/project"));
+        assert!(resume.iter().any(|a| a == "--resume"));
+        assert!(!resume.iter().any(|a| a == "--project-folder" || a == "--build-with"), "{resume:?}");
+        let again = text(How::FollowUp);
+        assert_eq!(after(&again, "--project-folder"), Some("/ports/snake/project"));
+        assert!(!again.iter().any(|a| a == "--build-with" || a == "--resume"), "rebuild refuses --build-with on a project");
+        assert_eq!(How::choose(true, false), How::New, "nothing to resume yet: start new");
+        assert_eq!(How::choose(false, true), How::FollowUp);
     }
 
     #[test]

@@ -1,24 +1,27 @@
 //! Running the queue: one rebuild child at a time. Its stdout events update the board (edited at
 //! most every [`EDIT_INTERVAL`]) and the "Log" thread (lines packed into 2000-character messages,
 //! sent at most that often). `feature` events go to the tester cards ([`super::card`]); each check
-//! and the end commit the project to the port's GitHub repo, when there is one. The end posts the
-//! verdict, mentioning testers when the port is ready.
+//! and the end commit the project to the port's GitHub repo, when there is one; `turn_done` adds to
+//! the job's usage. The job's status, the board and the usage are saved in the port's `bot.json`.
+//! `/stop` stops the child cleanly ([`run::stop`]). The end posts the verdict, mentioning testers
+//! when the port is ready.
 
 use super::Bot;
 use super::card;
-use super::embeds;
-use super::live::Port;
+use super::scheduler::{self, Job};
 use super::sync::SyncJob;
+use chrono::Utc;
 use craft_anything_discord::board::Board;
 use craft_anything_discord::coalesce::{Coalescer, EDIT_INTERVAL, MESSAGE_LIMIT, pack_lines};
+use craft_anything_discord::cost::Usage;
 use craft_anything_discord::events::{Event, Line, parse_line};
+use craft_anything_discord::jobs::{JobKind, JobStatus};
 use craft_anything_discord::log::log_line;
-use craft_anything_discord::run::{self, ChildEnd, Finished, Target, Verdict};
+use craft_anything_discord::run::{self, ChildEnd, Finished, How, Verdict};
 use craft_anything_discord::text::clip;
 use craft_anything_evidence::ToolError;
-use craft_anything_platform::process::Output;
-use serenity::all::{CreateAllowedMentions, CreateMessage, EditMessage, Http, RoleId};
-use std::path::PathBuf;
+use craft_anything_platform::process::{Output, RunningProcess};
+use serenity::all::{CreateAllowedMentions, CreateMessage, Http, RoleId};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -29,22 +32,19 @@ const TICK: Duration = Duration::from_millis(500);
 const REFRESH: Duration = Duration::from_secs(30);
 /// Longest outcome message quoted in the final post.
 const MESSAGE_CHARS: usize = 300;
-
-/// One queued port: where it reports and what it rebuilds.
-#[derive(Clone)]
-pub struct Job {
-    pub port: Arc<Port>,
-    pub input: PathBuf,
-    pub target: Target,
-    pub label: String,
-}
+const STOPPED_MESSAGE: &str = "Stopped with /stop.";
 
 /// Runs `first`, then every job that queued behind it, until the queue is empty.
 pub async fn run_queue(http: Arc<Http>, bot: Arc<Bot>, first: Job) {
     let mut job = first;
     loop {
         run_one(&http, &bot, &job).await;
-        let next = bot.queue.lock().await.finish();
+        let next = {
+            let mut queue = bot.queue.lock().await;
+            let next = queue.finish();
+            scheduler::save(&queue, &bot.config.ports_root);
+            next
+        };
         match next {
             Some(n) => job = n,
             None => break,
@@ -52,8 +52,8 @@ pub async fn run_queue(http: Arc<Http>, bot: Arc<Bot>, first: Job) {
     }
 }
 
-/// The run's own state; the board itself is the port's ([`Port::live`]), so a tester's verdict
-/// shows on it too.
+/// The run's own state; the board and the usage are the port's ([`super::live::Live`]), so a
+/// tester's verdict shows on the board too.
 struct Progress {
     finished: Option<Finished>,
     pending: Vec<String>,
@@ -90,8 +90,15 @@ impl Progress {
         if let Event::Finished { ok, paused, message } = event {
             self.finished = Some(Finished { ok: *ok, paused: *paused, message: message.clone() });
         }
-        if let Some(board) = job.port.live.lock().await.board.as_mut() {
-            board.apply(event);
+        {
+            let mut live = job.port.live.lock().await;
+            live.state.board.get_or_insert_with(Board::new).apply(event);
+            if let Event::TurnDone { input_tokens, output_tokens, tokens_unknown, cost_usd, cost_is_estimate, .. } = event {
+                let mut turn = Usage::default();
+                turn.add_turn(*input_tokens, *output_tokens, *tokens_unknown, *cost_usd, *cost_is_estimate);
+                live.state.add_usage(job.id, &turn, Utc::now());
+                live.save(&job.port);
+            }
         }
         self.board_gate.mark();
         match event {
@@ -106,7 +113,8 @@ impl Progress {
         }
     }
 
-    /// Sends what is due; `force` sends everything pending now (the end of a run).
+    /// Sends what is due; `force` sends everything pending now (the end of a run). The board is
+    /// saved with each edit, so a restart draws it as it was last shown.
     async fn flush(&mut self, http: &Http, job: &Job, force: bool) {
         let now = Instant::now();
         if self.log_gate.is_pending() && (force || self.log_gate.is_due(now)) {
@@ -121,33 +129,37 @@ impl Progress {
             self.board_gate.mark();
         }
         if self.board_gate.is_pending() && (force || self.board_gate.is_due(now)) {
-            let (view, board_message) = {
+            {
                 let live = job.port.live.lock().await;
-                (live.board.as_ref().map(|b| b.render(live.elapsed())), live.board_message())
-            };
-            if let Some(view) = view {
-                let edit = EditMessage::new().embed(embeds::board_embed(&job.label, &view));
-                if let Err(e) = job.port.channel.edit_message(http, board_message, edit).await {
-                    log::warn!("couldn't update the board in {}: {e}", job.port.channel);
-                }
+                live.save(&job.port);
             }
+            job.port.draw(http).await;
             self.board_gate.sent(now);
             self.refreshed = now;
         }
     }
 }
 
-async fn run_one(http: &Http, bot: &Bot, job: &Job) {
-    if let Err(e) = job.port.channel.say(http, "▶️ Starting the rebuild.").await {
-        log::warn!("couldn't post in {}: {e}", job.port.channel);
+fn opening(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::Port => "▶️ Starting the rebuild.",
+        JobKind::Resume => "▶️ Resuming the rebuild where it stopped.",
+        JobKind::Retry => "🔁 Running the request again on the same project folder.",
     }
+}
+
+async fn run_one(http: &Http, bot: &Bot, job: &Job) {
+    scheduler::say(http, job.port.channel, opening(job.kind)).await;
     {
         let mut live = job.port.live.lock().await;
-        live.started = Some(Instant::now());
-        live.ended = None;
-        live.board.get_or_insert_with(Board::new);
+        live.state.start_job(job.id, Utc::now());
+        live.state.board.get_or_insert_with(Board::new).restart();
+        live.save(&job.port);
     }
-    let args = run::rebuild_args(&job.input, &job.target.request(&job.label), &job.port.project, job.target, bot.config.backend.as_deref());
+    let project_exists = craft_anything_ai::rebuild::project::has_project(&job.port.project);
+    let how = How::choose(job.kind == JobKind::Resume, project_exists);
+    let request = job.target.request(&job.label);
+    let args = run::rebuild_args(&job.input, &request, &job.port.project, job.target, bot.config.backend.as_deref(), how);
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let mut progress = Progress::new();
     let end = match run::spawn(&bot.config.craft_cli, args, move |line| {
@@ -159,6 +171,7 @@ async fn run_one(http: &Http, bot: &Bot, job: &Job) {
             loop {
                 tokio::select! {
                     Some(line) = rx.recv() => progress.take_line(http, bot, job, &line).await,
+                    () = job.stop.wait() => break stop_child(child).await,
                     _ = tick.tick() => {
                         if let Some(result) = child.try_result() {
                             break child_end(result);
@@ -172,24 +185,49 @@ async fn run_one(http: &Http, bot: &Bot, job: &Job) {
     while let Ok(line) = rx.try_recv() {
         progress.take_line(http, bot, job, &line).await;
     }
-    let verdict = run::verdict(progress.finished.as_ref(), &end);
-    if !verdict.ok && progress.finished.as_ref().is_none_or(|f| f.ok) {
-        progress.apply(http, bot, job, &Event::Finished { ok: false, paused: false, message: verdict.message.clone() }).await;
+    let stopped = job.stop.is_requested();
+    let mut verdict = run::verdict(progress.finished.as_ref(), &end);
+    if stopped {
+        verdict.message = STOPPED_MESSAGE.to_owned();
     }
+    if !verdict.ok && (stopped || progress.finished.as_ref().is_none_or(|f| f.ok)) {
+        progress.apply(http, bot, job, &Event::Finished { ok: false, paused: stopped, message: verdict.message.clone() }).await;
+    }
+    let status = match (stopped, verdict.ok, verdict.paused) {
+        (true, _, _) => JobStatus::Stopped,
+        (false, true, _) => JobStatus::Finished,
+        (false, false, true) => JobStatus::Paused,
+        (false, false, false) => JobStatus::Failed,
+    };
     {
         let mut live = job.port.live.lock().await;
-        live.ended = Some(live.elapsed());
+        live.state.end_job(job.id, status, Utc::now());
+        live.save(&job.port);
     }
     progress.flush(http, job, true).await;
-    let outcome = if verdict.ok {
-        "finished"
-    } else if verdict.paused {
-        "paused"
+    job.port.queue(SyncJob::Commit { message: format!("Port {}: {}", status.label(), clip(&verdict.message, MESSAGE_CHARS)) });
+    if stopped {
+        scheduler::say(http, job.port.channel, "⏹️ Stopped. /resume carries on from where it stopped; /retry runs the request again.").await;
     } else {
-        "failed"
-    };
-    job.port.queue(SyncJob::Commit { message: format!("Port {outcome}: {}", clip(&verdict.message, MESSAGE_CHARS)) });
-    post_verdict(http, bot, job, &verdict).await;
+        post_verdict(http, bot, job, &verdict).await;
+    }
+}
+
+/// `/stop`: the child is asked to stop, then killed after the grace, off the async threads.
+async fn stop_child(mut child: RunningProcess) -> ChildEnd {
+    let stopped = tokio::task::spawn_blocking(move || {
+        let confirmed = run::stop(&mut child);
+        (confirmed, child.try_result().map(child_end))
+    })
+    .await;
+    match stopped {
+        Ok((_, Some(end))) => end,
+        Ok((confirmed, None)) => {
+            log::warn!("the rebuild was asked to stop; its end was confirmed: {confirmed}");
+            ChildEnd { success: false, code: None, stderr: "the rebuild did not report how it ended after /stop".to_owned() }
+        }
+        Err(e) => ChildEnd { success: false, code: None, stderr: format!("stopping the rebuild failed: {e}") },
+    }
 }
 
 fn child_end(result: &Result<Output, ToolError>) -> ChildEnd {

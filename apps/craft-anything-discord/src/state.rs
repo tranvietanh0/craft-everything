@@ -1,7 +1,11 @@
 //! What the bot keeps about one port in `PORTS_ROOT/<slug>/bot.json`: where it posts, the tester
-//! cards it has posted, and the Plane and GitHub ids. Kept on disk so Pass and Fail still work, and
-//! Plane and GitHub stay in step, after the bot restarts.
+//! cards it has posted, the Plane and GitHub ids, its jobs ([`crate::jobs`]), its activity
+//! ([`crate::activity`]) and its last board. Kept on disk so Pass and Fail still work, the board
+//! is drawn again, and Plane and GitHub stay in step, after the bot restarts.
 
+use crate::activity::Activity;
+use crate::board::Board;
+use crate::jobs::JobRecord;
 use crate::plane::PlaneIds;
 use crate::repo::RepoInfo;
 use crate::tester::{CardAction, CardStatus, card_action};
@@ -51,6 +55,11 @@ pub struct PortState {
     pub next_card: u64,
     pub plane: Option<PlaneIds>,
     pub repo: Option<RepoInfo>,
+    /// Every run, oldest first.
+    pub jobs: Vec<JobRecord>,
+    pub activity: Vec<Activity>,
+    /// The board as the last run left it, drawn again after a restart.
+    pub board: Option<Board>,
 }
 
 impl PortState {
@@ -83,6 +92,31 @@ impl PortState {
             Ok(Some(state)) if state.channel == channel => Some((dir, state)),
             _ => None,
         })
+    }
+
+    /// Every port's state under `ports_root`. A folder without `bot.json` is not a port; one whose
+    /// `bot.json` can't be read is logged and left out.
+    pub fn load_all(ports_root: &Path) -> Vec<PortState> {
+        let entries = match std::fs::read_dir(ports_root) {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::warn!("couldn't list {}: {e}", ports_root.display());
+                return Vec::new();
+            }
+        };
+        let mut states: Vec<PortState> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .filter_map(|dir| {
+                PortState::load(&dir).unwrap_or_else(|e| {
+                    log::warn!("{e}");
+                    None
+                })
+            })
+            .collect();
+        states.sort_by(|a, b| a.slug.cmp(&b.slug));
+        states
     }
 
     fn latest_card(&self, feature: &str) -> Option<&Card> {

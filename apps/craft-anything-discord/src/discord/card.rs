@@ -8,6 +8,8 @@ use super::Bot;
 use super::embeds;
 use super::live::{self, Port};
 use super::sync::SyncJob;
+use chrono::Utc;
+use craft_anything_discord::board::Board;
 use craft_anything_discord::events::Event;
 use craft_anything_discord::guide::{self, GuideFile};
 use craft_anything_discord::review::{self, STEPS_LIMIT, Verdict, WHAT_LIMIT};
@@ -31,17 +33,20 @@ const RESULT_FIELD: &str = "Result";
 /// round; `ready_to_test` with a guide gets a card unless one already covers this round.
 pub async fn on_feature(http: &Http, bot: &Bot, port: &Port, name: &str, state: &str, guide: Option<&str>, similarity: Option<f64>) {
     port.queue(SyncJob::Feature { name: name.to_owned(), state: state.to_owned(), note: None });
-    match state {
-        "broken" => {
-            let mut live = port.live.lock().await;
+    {
+        let mut live = port.live.lock().await;
+        live.state.record_feature(name, state, Utc::now());
+        if state == "broken" {
             live.state.on_broken(name);
-            live.save(port);
         }
-        "ready_to_test" => match guide {
-            Some(guide) => post_card(http, bot, port, name, guide, similarity).await,
-            None => log::warn!("{name} in {} is ready to test without a guide; no card is posted", port.channel),
-        },
-        _ => {}
+        live.save(port);
+    }
+    if state != "ready_to_test" {
+        return;
+    }
+    match guide {
+        Some(guide) => post_card(http, bot, port, name, guide, similarity).await,
+        None => log::warn!("{name} in {} is ready to test without a guide; no card is posted", port.channel),
     }
 }
 
@@ -337,10 +342,13 @@ async fn conclude(http: &Http, bot: &Arc<Bot>, port: &Port, card_id: u64, who: (
         let mut live = port.live.lock().await;
         if matches!(verdict, Verdict::Fail { .. }) {
             live.state.failed(card_id);
-            live.save(port);
         }
-        update_board(http, port, &mut live, &card.feature, state).await;
+        live.state.record_review(&card.feature, verdict == Verdict::Pass, Utc::now());
+        let shown = Event::Feature { name: card.feature.clone(), state: state.to_owned(), guide: None, note: None, similarity: None };
+        live.state.board.get_or_insert_with(Board::new).apply(&shown);
+        live.save(port);
     }
+    port.draw(http).await;
     close_message_with(http, port, &card, asker.card_message(), &fields).await;
     let line = CreateMessage::new().content(clip(&verdict.log_line(&card.feature, name), MESSAGE_LIMIT)).allowed_mentions(CreateAllowedMentions::new());
     if let Err(e) = port.thread.send_message(http, line).await {
@@ -353,19 +361,4 @@ async fn conclude(http: &Http, bot: &Arc<Bot>, port: &Port, card_id: u64, who: (
         told.push_str(&format!(" The note for the builder couldn't be left ({e}); the failure is still recorded with the feature."));
     }
     asker.tell(http, &told).await;
-}
-
-/// Shows the verdict on the board, when the bot still has it (not after a restart).
-async fn update_board(http: &Http, port: &Port, live: &mut live::Live, feature: &str, state: &str) {
-    let elapsed = live.elapsed();
-    let label = live.state.label.clone();
-    let board_message = live.board_message();
-    let Some(board) = live.board.as_mut() else {
-        return;
-    };
-    board.apply(&Event::Feature { name: feature.to_owned(), state: state.to_owned(), guide: None, note: None, similarity: None });
-    let edit = EditMessage::new().embed(embeds::board_embed(&label, &board.render(elapsed)));
-    if let Err(e) = port.channel.edit_message(http, board_message, edit).await {
-        log::warn!("couldn't update the board in {}: {e}", port.channel);
-    }
 }
