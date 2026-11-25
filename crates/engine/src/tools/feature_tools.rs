@@ -3,7 +3,6 @@
 //! person what changed (`RunEvent::Feature`). The project is the one being built, as for the
 //! other build tools.
 
-use crate::inbox::InboxDir;
 use crate::tool::{Ctx, Effects, Requires, ToolOutput, ToolSpec, Toolset, parse_params, schema_of};
 use crate::tools::build_tools::{in_project, workspace};
 use crate::workspace::Workspace;
@@ -98,6 +97,7 @@ fn guide_in_project(ws: &Workspace, guide: &str) -> Result<String, ToolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inbox::InboxDir;
     use crate::workspace::TargetRef;
     use crate::{CallOptions, Caller, Consent, Engine};
     use craft_anything_evidence::ErrorCode;
