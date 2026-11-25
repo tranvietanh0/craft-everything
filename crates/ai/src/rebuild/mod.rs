@@ -18,7 +18,7 @@
 //! `locate` (what to study in a local target) and `output` (what a build produced).
 
 use crate::cli_agents::{Builder, CliSpec};
-use crate::{AgentEvent, AiHub, BackendKind, Conversation, Role};
+use crate::{AgentEvent, AiHub, BackendKind, BackendOptions, Conversation, Role};
 use craft_anything_engine::inbox::{Answer, Inbox, InboxDir, Request};
 use craft_anything_engine::project::{Project, Purpose};
 use craft_anything_engine::questions::AskedQuestion;
@@ -152,6 +152,9 @@ pub struct RunOptions {
     /// A free session is read first; this is the fallback while it is held; the saved settings
     /// are the last fallback.
     pub clean_room: Option<bool>,
+    /// Offer the person's own Claude Code skills and MCP servers to a Deep Claude Code builder
+    /// (`rebuild --user-skills`). Refused in Clean room and for any other builder.
+    pub user_skills: bool,
     /// When the person made the request: a stop of Ghidra after it holds even if the run starts
     /// later (it waited in the queue, or for a key store). Set when the options are made.
     pub asked: std::time::SystemTime,
@@ -172,6 +175,7 @@ impl Default for RunOptions {
             adapters: Default::default(),
             wake: Wake::default(),
             clean_room: None,
+            user_skills: false,
             asked: std::time::SystemTime::now(),
         }
     }
@@ -302,6 +306,7 @@ impl RebuildRun {
         // passes the mode instead, and the saved settings are the last fallback.
         let run_deep = run_deep_mode(hub, &opts);
         let clean_room = !run_deep;
+        check_user_skills(&opts, &entry, run_deep)?;
         // A study is only carried on in the mode it was made in. A session kept in the other mode
         // may have read inside the original, and its capture must not be handed to this run.
         let saved_in_mode = ws.builder_session_in(run_deep);
@@ -648,6 +653,40 @@ fn configured_continues(args: &[String]) -> bool {
     args.iter().any(|a| a == "--continue" || a == "-c")
 }
 
+/// What the builder is told first.
+const BUILDER_PREAMBLE: &str = "You work inside Craft Anything for a person who doesn't code. The message below is your task.
+
+";
+
+/// Added when the person lets the builder use their own Claude Code skills.
+const USER_SKILLS_PREAMBLE: &str = "The person's own Claude Code skills are available through the Skill tool. When the target is an Android package (.apk, .xapk, .apks or .aab), prefer the person's APK-port skill if one is listed. After you finish each feature, write tests/<feature>.md with the sections Goal, Setup, Steps, Expected and Not done yet, so human testers can check it.
+
+";
+
+/// The builder's opening instructions.
+fn builder_preamble(user_skills: bool) -> String {
+    if user_skills { format!("{BUILDER_PREAMBLE}{USER_SKILLS_PREAMBLE}") } else { BUILDER_PREAMBLE.to_string() }
+}
+
+/// `--user-skills` works only for a Claude Code builder in Deep mode: a skill can read anything, so
+/// Clean room can't offer it, and no other agent has skills of this kind. Said plainly, never
+/// dropped quietly.
+fn check_user_skills(opts: &RunOptions, entry: &crate::BackendEntry, deep: bool) -> Result<(), ToolError> {
+    if !opts.user_skills {
+        return Ok(());
+    }
+    if !deep {
+        return Err(ToolError::invalid("Your Claude Code skills need Deep mode: a skill can read anything, so Clean room can't offer them.")
+            .with_remediation("Switch on Deep mode (--deep in the CLI), or leave out --user-skills."));
+    }
+    let claude = entry.config.kind == BackendKind::AgentCli && opts.adapters.for_backend(&entry.config.model, &entry.options).ids().contains(&"claude-code");
+    if !claude {
+        return Err(ToolError::invalid(format!("Your Claude Code skills can only be used when Claude Code builds; {} is the builder.", entry.config.name))
+            .with_remediation("Choose Claude Code as the builder, or leave out --user-skills."));
+    }
+    Ok(())
+}
+
 /// Refuse saved Claude Code arguments that would continue the project's Deep session in Clean
 /// room: a `--resume` of its id or a `--continue`/`-c` of the latest conversation bypasses the
 /// mode filter and carries what that session read.
@@ -843,14 +882,14 @@ impl Worker {
             key: crate::cli_agents::acp::key_for(&self.keys, &entry.config.model, &entry.config.name, entry.config.kind),
             cost_totals: Some(crate::cli_agents::claude_cost::path_in(&config_dir)),
             resume: ws.manifest.agent_session_for_mode(&entry.config.model, deep).map(str::to_string),
-            preamble: Some(
-                "You work inside Craft Anything for a person who doesn't code. The message below is your task.
-
-"
-                .into(),
-            ),
+            preamble: Some(builder_preamble(opts.user_skills)),
             adapters: opts.adapters.clone(),
-            ..CliSpec::new(entry.config.clone(), entry.options.clone(), opts.beginner, Some(ws.root.clone()))
+            ..CliSpec::new(
+                entry.config.clone(),
+                BackendOptions { user_skills: opts.user_skills, ..entry.options.clone() },
+                opts.beginner,
+                Some(ws.root.clone()),
+            )
         })
     }
 

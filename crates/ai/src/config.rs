@@ -143,6 +143,10 @@ pub struct BackendOptions {
     /// Agent CLIs: the model to ask the CLI for (passed with its model flag when it has one).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cli_model: Option<String>,
+    /// Claude Code, Deep builds: offer the person's own Claude Code skills and let their own MCP
+    /// servers load. Chosen per run (`rebuild --user-skills`), so it is never saved with the backend.
+    #[serde(skip)]
+    pub user_skills: bool,
     /// OpenCode's model variant. Absent means the model's own default thinking depth.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cli_thinking: Option<Effort>,

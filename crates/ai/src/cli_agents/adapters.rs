@@ -506,7 +506,11 @@ impl AgentAdapter for ClaudeCode {
             (true, true) => "Bash,PowerShell,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,NotebookEdit",
             (false, _) => "",
         };
-        a.extend(["--tools".into(), tools.into()]);
+        // The person's own skills (opt-in) are offered to a Deep builder only: a skill can read
+        // anything, which Clean room's approval tool could not keep out of the original.
+        let user_skills = cx.options.user_skills && cx.builder && !cx.reads_checked;
+        let tools = if user_skills { format!("{tools},Skill") } else { tools.to_string() };
+        a.extend(["--tools".into(), tools]);
         if cx.builder {
             // Questions go through our core_person_ask tool, which the app shows as buttons.
             a.extend(["--permission-prompt-tool".into(), format!("mcp__{MCP_NAME}__{APPROVAL_TOOL}"), "--disallowedTools".into(), "AskUserQuestion".into()]);
@@ -515,7 +519,11 @@ impl AgentAdapter for ClaudeCode {
             // After every tool call, notes the person added meanwhile reach the model as context.
             a.extend(["--settings".into(), notes_hook_settings(&cx.mcp.command, dir)]);
         }
-        a.extend(["--strict-mcp-config".into(), "--mcp-config".into(), mcp_json, "--allowedTools".into(), format!("mcp__{MCP_NAME}__*")]);
+        // Strict unless the person asked for their own skills: those may bring MCP servers of their own.
+        if !user_skills {
+            a.push("--strict-mcp-config".into());
+        }
+        a.extend(["--mcp-config".into(), mcp_json, "--allowedTools".into(), format!("mcp__{MCP_NAME}__*")]);
         if cx.builder && cx.reads_checked {
             a.push("TodoWrite".into());
         } else if cx.builder {

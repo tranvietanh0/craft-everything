@@ -2846,6 +2846,27 @@ mod tests {
         assert!(!McpCommand::local_or_remote(true, None, Some("/p/inbox".into())).args.contains(&"--inbox".to_string()));
     }
 
+    /// The person's own skills: a Deep builder gets the `Skill` tool and their MCP servers beside
+    /// ours; off, or in Clean room, the args are as before.
+    #[test]
+    fn user_skills_are_offered_to_a_deep_builder_only() {
+        let claude = adapter_for("claude-code");
+        let tools = |a: &[String]| a[a.iter().position(|x| x == "--tools").unwrap() + 1].split(',').map(str::to_string).collect::<Vec<_>>();
+        let on = BackendOptions { user_skills: true, ..BackendOptions::default() };
+        let deep = build_args(claude.as_ref(), &on, "build it", "PRE", &mcp(), None, Access::Build);
+        assert!(tools(&deep).contains(&"Skill".to_string()) && tools(&deep).contains(&"Agent".to_string()), "{deep:?}");
+        assert!(!deep.contains(&"--strict-mcp-config".to_string()), "their own MCP servers load");
+        assert!(deep.contains(&"--mcp-config".to_string()), "ours is still passed");
+        let off = build_args(claude.as_ref(), &BackendOptions::default(), "build it", "PRE", &mcp(), None, Access::Build);
+        assert!(!tools(&off).contains(&"Skill".to_string()));
+        assert!(off.contains(&"--strict-mcp-config".to_string()));
+        let clean = build_args(claude.as_ref(), &on, "build it", "PRE", &mcp(), None, Access::CleanRoomBuild);
+        assert!(!tools(&clean).contains(&"Skill".to_string()), "a skill can read anything");
+        assert!(clean.contains(&"--strict-mcp-config".to_string()));
+        let chat = build_args(claude.as_ref(), &on, "q", "PRE", &mcp(), None, Access::Analyse);
+        assert!(!tools(&chat).contains(&"Skill".to_string()), "only a builder gets them");
+    }
+
     /// #564: in Clean room a chat's reads aren't left to Claude Code's defaults. Its own file, shell
     /// and web tools are refused outright (a deny rule beats any allow), so only our tool server,
     /// which keeps the original out of reach, is left; Deep mode is unchanged.

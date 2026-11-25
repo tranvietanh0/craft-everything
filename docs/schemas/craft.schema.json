@@ -52,7 +52,8 @@
           "publish",
           "delete_outside",
           "system",
-          "other_tools"
+          "other_tools",
+          "skills"
         ]
       }
     },

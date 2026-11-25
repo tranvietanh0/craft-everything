@@ -1208,6 +1208,8 @@ pub enum ActionKind {
     System,
     /// Tools with no rule of their own.
     OtherTools,
+    /// Running one of the person's own Claude Code skills (their actions still go through the other kinds).
+    Skills,
 }
 
 /// What an action of one [`ActionKind`] gets.
@@ -1272,6 +1274,13 @@ pub const ACTION_KINDS: &[KindRow] = &[
         name: "other_tools",
         what: "tools with no approval rule of their own",
         auto: Approval::Refuse,
+        manual: Approval::Ask,
+    },
+    KindRow {
+        kind: ActionKind::Skills,
+        name: "skills",
+        what: "running one of the person's own Claude Code skills",
+        auto: Approval::Allow,
         manual: Approval::Ask,
     },
 ];

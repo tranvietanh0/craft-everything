@@ -590,6 +590,7 @@ pub fn kind_of(ws: Option<&Workspace>, tool: &str, input: &Value) -> ActionKind 
         }
         "Bash" | "PowerShell" => kinds_of(ws, tool, input).first().copied().unwrap_or(ActionKind::Commands),
         "WebFetch" | "WebSearch" => ActionKind::Web,
+        "Skill" => ActionKind::Skills,
         _ => ActionKind::OtherTools,
     }
 }
@@ -1237,6 +1238,22 @@ mod tests {
             assert!(matches!(outcome(Some(&w), true, "Bash", &json!({"command": cmd})), Outcome::Refuse(_) | Outcome::RefuseKind { .. }), "{cmd}");
         }
         assert_eq!(kind_of(Some(&w), "Bash", &json!({"command": "cat package.json"})), ActionKind::Commands);
+    }
+
+    #[test]
+    fn running_a_skill_is_its_own_kind_and_other_tools_stay_refused() {
+        let (_d, w) = ws();
+        assert_eq!(kind_of(Some(&w), "Skill", &json!({"skill": "x"})), ActionKind::Skills);
+        // Auto mode lets a skill start (what it then does is checked on its own), but a tool with no
+        // rule is still refused, so the new kind didn't loosen it.
+        assert_eq!(outcome(Some(&w), true, "Skill", &json!({"skill": "x"})), Outcome::Allow);
+        assert!(matches!(outcome(Some(&w), true, "CronCreate", &json!({})), Outcome::RefuseKind { kind: ActionKind::OtherTools, .. }));
+        // Without Auto mode the person is asked, and "always" allows the kind, not one skill.
+        assert!(matches!(outcome(Some(&w), false, "Skill", &json!({"skill": "x"})), Outcome::Ask { remember: Remember::Kind(ActionKind::Skills), .. }));
+        // The person can still refuse it.
+        let mut w = w;
+        w.manifest.approvals.insert(ActionKind::Skills, Approval::Refuse);
+        assert!(matches!(outcome(Some(&w), true, "Skill", &json!({"skill": "x"})), Outcome::RefuseKind { kind: ActionKind::Skills, .. }));
     }
 
     #[test]
