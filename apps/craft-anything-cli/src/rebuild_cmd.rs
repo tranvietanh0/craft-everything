@@ -2,6 +2,7 @@
 //! answered on the terminal, or automatically with `--unattended` (first choice; approvals are
 //! refused, so nothing outside the project happens without a person).
 
+use crate::rebuild_events::{EventFormat, NdjsonWriter};
 use crate::{Cli, INTERRUPTED, make_engine};
 use clap::Args;
 use craft_anything_ai::rebuild::{self, RebuildRun, RunEvent, RunOptions};
@@ -63,6 +64,12 @@ pub struct RebuildArgs {
     /// with your permissions. Needs --deep and Claude Code as the builder.
     #[arg(long)]
     pub user_skills: bool,
+    /// Print the run as machine-readable events: one JSON object per line on stdout, human text on
+    /// stderr. Each line has a `type`; the run starts with `project` and ends with `finished`.
+    /// Questions and approvals are still answered on stdin, one line each, in the order asked
+    /// (or automatically with --unattended). The types and fields: docs/rebuild-events.md.
+    #[arg(long, value_enum)]
+    pub events: Option<EventFormat>,
 }
 
 pub fn rebuild(cli: &Cli, a: &RebuildArgs) -> u8 {
@@ -160,7 +167,11 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
             (ws, rebuild::project::attached_request(attached, &a.request))
         }
     };
-    println!("Project: {}", ws.root.display());
+    let mut events = a.events.map(|_| NdjsonWriter::new(std::io::stdout()));
+    match events.as_mut() {
+        Some(w) => w.project(&ws.root, &ws.manifest.target).map_err(stdout_error)?,
+        None => println!("Project: {}", ws.root.display()),
+    }
     // The saved builder may be off or gone; say who builds once the run has started, so a failed
     // start doesn't claim an AI that never ran.
     let replacement = rebuild::builder_replacement(&hub.config(), &ws, a.backend.as_deref());
@@ -189,7 +200,21 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
         if INTERRUPTED.load(Ordering::SeqCst) {
             run.stop();
         }
+        // Read the state before draining: a run sends its last event before it stops running, so
+        // once this is false the drain below holds every event (checking after it lost `finished`).
+        let stopped = !run.is_running();
         for e in run.poll() {
+            if let RunEvent::Finished { ok: o, .. } = &e {
+                ok = *o;
+            }
+            if let Some(w) = events.as_mut() {
+                w.event(&e).map_err(stdout_error)?;
+                if let RunEvent::Ask(r) = &e {
+                    let answer = if a.unattended { auto_answer(r, true) } else { prompt_answer(r, true) };
+                    run.answer(&r.id, &answer)?;
+                }
+                continue;
+            }
             match e {
                 RunEvent::Step { step, text } => {
                     end_line(&mut line_open);
@@ -220,7 +245,7 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
                 }
                 RunEvent::Ask(r) => {
                     end_line(&mut line_open);
-                    let answer = if a.unattended { auto_answer(&r) } else { prompt_answer(&r) };
+                    let answer = if a.unattended { auto_answer(&r, false) } else { prompt_answer(&r, false) };
                     run.answer(&r.id, &answer)?;
                 }
                 RunEvent::Checked(c) => {
@@ -243,17 +268,23 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
                             format!("Stopped: {message}")
                         }
                     );
-                    ok = o;
                 }
             }
         }
-        if !run.is_running() && run.poll().is_empty() {
+        if stopped {
             break;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+    if let Some(w) = events.as_mut() {
+        w.flush_text().map_err(stdout_error)?;
+    }
     let _ = std::io::stdout().flush();
     Ok(ok)
+}
+
+fn stdout_error(e: std::io::Error) -> ToolError {
+    ToolError::io("writing the run's events to stdout", e)
 }
 
 fn end_line(open: &mut bool) {
@@ -263,10 +294,29 @@ fn end_line(open: &mut bool) {
     }
 }
 
-fn auto_answer(r: &Request) -> Answer {
+/// Human text: stdout, or stderr when stdout carries the NDJSON events.
+fn say(to_stderr: bool, text: &str) {
+    if to_stderr {
+        eprintln!("{text}");
+    } else {
+        println!("{text}");
+    }
+}
+
+fn prompt(to_stderr: bool, text: &str) {
+    if to_stderr {
+        eprint!("{text}");
+        let _ = std::io::stderr().flush();
+    } else {
+        print!("{text}");
+        let _ = std::io::stdout().flush();
+    }
+}
+
+fn auto_answer(r: &Request, to_stderr: bool) -> Answer {
     match r.kind {
         RequestKind::Question => {
-            println!("? {} → {} (unattended)", r.title, r.choices.first().map(String::as_str).unwrap_or("no preference"));
+            say(to_stderr, &format!("? {} → {} (unattended)", r.title, r.choices.first().map(String::as_str).unwrap_or("no preference")));
             Answer {
                 choice: r.choices.first().cloned(),
                 text: r.choices.is_empty().then(|| "No preference; use your best judgement.".to_string()),
@@ -274,7 +324,7 @@ fn auto_answer(r: &Request) -> Answer {
             }
         }
         RequestKind::Approval => {
-            println!("? {} → refused (unattended)", r.title);
+            say(to_stderr, &format!("? {} → refused (unattended)", r.title));
             Answer { allow: Some(false), text: Some("Unattended run: actions outside the project aren't allowed.".into()), ..Default::default() }
         }
     }
@@ -286,18 +336,17 @@ fn read_line() -> String {
     s.trim().to_string()
 }
 
-fn prompt_answer(r: &Request) -> Answer {
-    println!("\n? {}", r.title);
+fn prompt_answer(r: &Request, to_stderr: bool) -> Answer {
+    say(to_stderr, &format!("\n? {}", r.title));
     if !r.detail.is_empty() {
-        println!("  {}", r.detail.lines().take(12).collect::<Vec<_>>().join("\n  "));
+        say(to_stderr, &format!("  {}", r.detail.lines().take(12).collect::<Vec<_>>().join("\n  ")));
     }
     match r.kind {
         RequestKind::Question => {
             for (i, c) in r.choices.iter().enumerate() {
-                println!("  {}) {c}", i + 1);
+                say(to_stderr, &format!("  {}) {c}", i + 1));
             }
-            print!("Your answer (number or text): ");
-            let _ = std::io::stdout().flush();
+            prompt(to_stderr, "Your answer (number or text): ");
             let line = read_line();
             match line.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).and_then(|i| r.choices.get(i)) {
                 Some(c) => Answer { choice: Some(c.clone()), ..Default::default() },
@@ -305,8 +354,7 @@ fn prompt_answer(r: &Request) -> Answer {
             }
         }
         RequestKind::Approval => {
-            print!("Allow? [y]es / [a]lways for this project / [n]o: ");
-            let _ = std::io::stdout().flush();
+            prompt(to_stderr, "Allow? [y]es / [a]lways for this project / [n]o: ");
             let line = read_line().to_lowercase();
             Answer { allow: Some(line.starts_with('y') || line.starts_with('a')), always: line.starts_with('a'), ..Default::default() }
         }
