@@ -1633,6 +1633,71 @@ fn an_api_backend_builds_with_the_build_tools() {
 }
 
 #[test]
+fn a_feature_the_builder_changes_reaches_the_run_as_a_feature_event() {
+    use crate::agent::tests::{Scripted, turn};
+    use crate::agent::{ApiConversation, EngineHost, LoopConfig, ModelSlot};
+    use crate::model::{Block, StopReason};
+    let d = tempfile::tempdir().unwrap();
+    let mut ws = Workspace::create(d.path(), "Snake", "A snake game", TargetRef::None).unwrap();
+    let engine = Arc::new(Engine::new(craft_anything_engine::testing::session()));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut w = Worker {
+        wake: Default::default(),
+        engine: engine.clone(),
+        tx,
+        stop: CancelToken::default(),
+        preview: Arc::default(),
+        seen: HashSet::new(),
+        inbox: Inbox::new(ws.inbox_dir()),
+        editor: None,
+        notes: Arc::default(),
+        feed: Arc::new(Mutex::new(feed::FeedLog::open(&ws))),
+        keys: crate::KeyStore::file_only(ws.root.join("keys.toml")),
+        kept_checks: Mutex::default(),
+        assets: false,
+        usage: None,
+        self_check: None,
+        reset_progress_after_notes: false,
+        taken_in_turn: Vec::new(),
+    };
+    w.attach(&ws).unwrap();
+    // Planned, then started, then reported again unchanged: only the two changes are events.
+    let report = |id: &str, state: &str| Block::ToolUse {
+        id: id.into(),
+        name: "build_feature_report".into(),
+        input: serde_json::json!({"name": "Title screen", "state": state}),
+    };
+    let script = Scripted {
+        turns: std::collections::VecDeque::from([
+            turn(vec![report("f1", "planned")], StopReason::ToolUse),
+            turn(vec![report("f2", "in_progress")], StopReason::ToolUse),
+            turn(vec![report("f3", "in_progress")], StopReason::ToolUse),
+            turn(vec![Block::Text { text: "Reported the title screen.".into() }], StopReason::EndTurn),
+        ]),
+        seen: Arc::default(),
+    };
+    let slot =
+        ModelSlot { name: "Scripted".into(), model: Box::new(script), local: false, effort: None, max_turns: 10, context_tokens: 0, tools: Default::default() };
+    let enabled = std::collections::BTreeSet::from([craft_anything_engine::Toolset::Core, craft_anything_engine::Toolset::Build]);
+    let mut api = ApiConversation::start_with(Arc::new(EngineHost(engine)), vec![slot], LoopConfig::default(), enabled).unwrap();
+    w.turn(&mut ws, &mut api, "Build it.", true, None).unwrap();
+    let features: Vec<(String, String)> = rx
+        .try_iter()
+        .filter_map(|e| match e {
+            RunEvent::Feature(f) => Some((f.name, f.state.id().to_string())),
+            _ => None,
+        })
+        .collect();
+    // The run reads the recorded state when it hears a report. A scripted builder answers faster
+    // than the run polls, so reports can share one read: the run ends on the recorded state, and
+    // an unchanged report never repeats an event. (The exact per-change rule is `features::changed`.)
+    assert_eq!(features.last().map(|(_, state)| state.as_str()), Some("in_progress"), "{features:?}");
+    assert!(features.len() <= 2 && features.windows(2).all(|w| w[0] != w[1]), "no repeats: {features:?}");
+    let stored = craft_anything_engine::workspace::features::load(&ws.root).unwrap();
+    assert_eq!(stored.len(), 1, "the same name is one record");
+}
+
+#[test]
 fn the_builder_is_an_agent_app_first_then_any_ai_backend() {
     let none = crate::AiConfig::default();
     assert!(builder_backend(&none, None).unwrap_err().message.contains("API key"));
@@ -5222,4 +5287,5 @@ fn user_skills_need_deep_mode_and_claude_code() {
     assert_eq!(builder_preamble(false), BUILDER_PREAMBLE);
     let with = builder_preamble(true);
     assert!(with.starts_with(BUILDER_PREAMBLE) && with.contains("Skill tool") && with.contains("tests/<feature>.md"), "{with}");
+    assert!(with.contains("build_feature_report") && with.contains("ready_to_test"), "{with}");
 }

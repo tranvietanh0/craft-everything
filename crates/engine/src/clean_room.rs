@@ -85,6 +85,8 @@ pub const TOOLS: &[&str] = &[
     "build_file_edit",
     "build_checklist",
     "build_command_run",
+    "build_feature_report",
+    "build_features_list",
     // Settings, engines, plugins and this computer's setup.
     "settings_show",
     "settings_set",

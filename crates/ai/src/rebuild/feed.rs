@@ -74,6 +74,8 @@ pub fn apply(feed: &mut Vec<FeedItem>, e: &RunEvent) {
         RunEvent::Ask(r) => feed.push(FeedItem::Ask { request: r.clone(), answer: None }),
         RunEvent::Checked(c) => feed.push(FeedItem::Check(c.clone())),
         RunEvent::Preview(_) => {}
+        // A feature's record is kept in the project (inbox/features.json), not in the feed.
+        RunEvent::Feature(_) => {}
         RunEvent::Finished { ok, message, paused } => {
             end_stream(feed);
             // #504: a run that ends with steps still open marks them stopped on the plan card,

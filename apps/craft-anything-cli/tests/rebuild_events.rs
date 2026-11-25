@@ -55,10 +55,7 @@ fn run_rebuild(projects: &Path, extra: &[&str]) -> (Output, tempfile::TempDir, t
 }
 
 fn json_lines(stdout: &str) -> Vec<Value> {
-    stdout
-        .lines()
-        .map(|l| serde_json::from_str::<Value>(l).unwrap_or_else(|e| panic!("stdout line is not JSON ({e}): {l}")))
-        .collect()
+    stdout.lines().map(|l| serde_json::from_str::<Value>(l).unwrap_or_else(|e| panic!("stdout line is not JSON ({e}): {l}"))).collect()
 }
 
 #[test]

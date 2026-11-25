@@ -267,6 +267,7 @@ impl Activity {
                 let result = if c.passed { LineKind::Done } else { LineKind::Failed };
                 new.push((result, format!("Check {}: {}", c.check, c.note)));
             }
+            RunEvent::Feature(f) => new.push((LineKind::Note, format!("Feature {}: {}", f.name, f.state.id()))),
             RunEvent::Preview(url) => new.push((LineKind::Note, format!("Preview at {url}"))),
             RunEvent::Finished { ok, message, paused } => {
                 state.going.clear();
