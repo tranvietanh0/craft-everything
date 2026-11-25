@@ -10,6 +10,15 @@ publish = false
 workspace = true
 
 [dependencies]
+craft-anything-evidence = { workspace = true }
+craft-anything-platform = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# Discord gateway and REST: slash commands, buttons, channels, embeds and threads. No standard
+# (prefix) framework; TLS through rustls.
+serenity = { version = "0.12", default-features = false, features = ["builder", "cache", "chrono", "client", "collector", "gateway", "http", "model", "rustls_backend", "utils"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+# Downloads (attachments and links), the same blocking client crates/ai and crates/engines use.
+ureq = "3"

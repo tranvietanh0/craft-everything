@@ -172,6 +172,14 @@ mod tests {
     }
 
     #[test]
+    fn feature_lines_as_main_emits_them_parse() {
+        let bare = event(r#"{"type":"feature","name":"Map","state":"in_progress","guide":null,"note":null,"similarity":null}"#);
+        assert!(matches!(bare, Event::Feature { ref state, guide: None, similarity: None, .. } if state == "in_progress"));
+        let scored = event(r#"{"type":"feature","name":"Map","state":"passed","guide":"guides/map.md","note":"ok","similarity":87}"#);
+        assert!(matches!(scored, Event::Feature { similarity: Some(s), .. } if s > 0.0), "an integer similarity is accepted");
+    }
+
+    #[test]
     fn finished_defaults_paused_to_false() {
         let e = event(r#"{"type":"finished","ok":true,"message":"done"}"#);
         assert_eq!(e, Event::Finished { ok: true, paused: false, message: "done".into() });
