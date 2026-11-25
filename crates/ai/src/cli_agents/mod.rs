@@ -12,6 +12,7 @@ pub mod acp;
 pub mod adapters;
 pub mod claude_cost;
 pub mod grants;
+pub mod herdr;
 pub mod models;
 mod shared;
 pub mod unfinished;
@@ -43,6 +44,7 @@ pub const MCP_NAME: &str = "craft-anything";
 /// Known agent CLIs: (agent id, program, display name).
 pub const KNOWN: &[(&str, &str, &str)] = &[
     ("claude-code", "claude", "Claude Code"),
+    (herdr::ID, "herdr", herdr::DISPLAY),
     ("codex", "codex", "Codex"),
     ("copilot", "copilot", "GitHub Copilot"),
     ("grok", "grok", "Grok Build"),
@@ -922,6 +924,9 @@ impl CliSpec {
 /// The conversation for a chat with an agent CLI: over ACP when the backend enables or requires
 /// it and the agent speaks it (a local, non-building run), else one CLI run per message.
 pub fn conversation(spec: CliSpec) -> Box<dyn Conversation> {
+    if runs_in_herdr(&spec) {
+        return Box::new(herdr::HerdrConversation::new(spec));
+    }
     match acp_for(&spec).filter(|_| spec.builder.is_none()) {
         // In Clean room the agent's own file, shell and web requests are refused, not put to the
         // person as a card they could allow with one click (#564).
@@ -935,10 +940,19 @@ pub fn conversation(spec: CliSpec) -> Box<dyn Conversation> {
 /// approval policy) when the backend enables or requires it and the agent speaks it, else one
 /// CLI run per message (approvals through our approval tool).
 pub fn builder_conversation(spec: CliSpec, approver: acp::Approver) -> Box<dyn Conversation> {
+    if runs_in_herdr(&spec) {
+        return Box::new(herdr::HerdrConversation::new(spec));
+    }
     match acp_for(&spec) {
         Some(c) => Box::new(c.with_approver(approver)),
         None => Box::new(CliConversation::new(spec)),
     }
+}
+
+/// Claude Code in a herdr pane: every message of it, chat, question or build, goes through herdr
+/// (its approvals are the person's, in the pane).
+fn runs_in_herdr(spec: &CliSpec) -> bool {
+    spec.adapters.for_agent(&spec.config.model).ids().contains(&herdr::ID)
 }
 
 /// An ACP conversation for a local backend that enables or requires ACP. The adapter chooses

@@ -214,6 +214,8 @@ impl Board {
     fn activity(&self) -> String {
         match (&self.error, &self.status) {
             (Some(e), _) => format!("⚠️ {e}"),
+            // Claude Code in herdr waits for the person in its pane: the run is paused on them.
+            (None, Some(s)) if s.starts_with(craft_anything_ai::cli_agents::herdr::WAITING_STATUS) => format!("⏸ {s}"),
             (None, Some(s)) => s.clone(),
             (None, None) => "Waiting to start".to_owned(),
         }
@@ -301,6 +303,16 @@ mod tests {
         assert_eq!(markers(&board.render(Duration::ZERO)), ["🔄", "⏳", "⏳", "⏳"]);
         feed(&mut board, &[BUILD]);
         assert_eq!(markers(&board.render(Duration::ZERO)), ["✅", "🔄", "⏳", "⏳"]);
+    }
+
+    #[test]
+    fn waiting_for_the_person_in_herdr_reads_as_paused_until_work_goes_on() {
+        let mut board = Board::new();
+        let waiting = format!(r#"{{"type":"status","text":"{}: it is asking you."}}"#, craft_anything_ai::cli_agents::herdr::WAITING_STATUS);
+        feed(&mut board, &[BUILD, &waiting]);
+        assert!(board.render(Duration::ZERO).activity.starts_with('⏸'), "{}", board.render(Duration::ZERO).activity);
+        feed(&mut board, &[r#"{"type":"status","text":"Asking Claude Code (herdr)…"}"#]);
+        assert!(!board.render(Duration::ZERO).activity.starts_with('⏸'));
     }
 
     #[test]

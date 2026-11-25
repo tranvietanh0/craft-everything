@@ -169,7 +169,9 @@ fn detect_agent_clis(include: impl Fn(&str) -> bool, probe_timeout: Option<Durat
         .iter()
         .filter(|(id, _, _)| include(id))
         .filter_map(|(id, prog, display)| {
+            // herdr counts only when its server answers: Claude Code is then started in it.
             let found = match probe_timeout {
+                _ if *id == crate::cli_agents::herdr::ID => crate::cli_agents::herdr::reachable().map(PathBuf::from),
                 Some(limit) => crate::cli_agents::find_program_within(prog, limit),
                 None => crate::cli_agents::find_program(prog),
             };
