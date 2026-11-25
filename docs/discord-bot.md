@@ -33,6 +33,49 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
    (`TESTER_ROLE_ID`). A failed run says why. If the program crashed or stopped without
    finishing, the end of its error output is shown (up to 1500 characters).
 
+What the bot keeps about a port (its channel, its tester cards, the Plane and GitHub ids) is in
+`PORTS_ROOT/<slug>/bot.json`, so cards still work after the bot restarts.
+
+## Tester cards
+
+When the builder reports a feature `ready_to_test` with its guide (a file in the project, such as
+`tests/map.md`), the bot posts a card in the port's channel:
+
+- the title "🧪 Ready to test: <feature>", the guide as the card text (cut to Discord's 4096
+  characters; the whole `.md` file is attached), the similarity when the builder gave one, and a
+  mention of the tester role;
+- two buttons, **Pass** and **Fail**. Only members with the tester or porter role may press them;
+  anyone else is told so privately.
+
+There is one card per testing round. Reporting the feature ready again does not post a second card.
+After the feature is reported `broken` (by the builder, or by a tester's Fail), the next
+`ready_to_test` posts a new card, and a card whose buttons are still live is closed ("Replaced by
+a newer card"). A guide outside the project folder, or a link out of it, is not read.
+
+**Pass** records the feature as `passed`. **Fail** opens a form: "What went wrong?" (required, up
+to 1000 characters) and "Steps to reproduce" (optional). Sending it records the feature as
+`broken`, with the tester's words as its note. Either way:
+
+- the verdict is recorded through the engine, with the same tool the builder uses:
+
+  ```sh
+  $CRAFT_CLI build_feature_report --building $PORTS_ROOT/<slug>/project \
+    --json '{"name":"<feature>","state":"broken","note":"Failed by <tester>: ..."}'
+  ```
+
+  `--building <project folder>` points the build tools at a rebuild's project from outside its run;
+- the card shows "✅ Passed by <tester>" or "❌ Failed by <tester>" (and what went wrong), and its
+  buttons are disabled, so each card is reviewed once;
+- the board shows the feature's new state (until the bot restarts; it doesn't redraw an old
+  board);
+- a failure is posted in the Log thread, and left for the builder as a note in the project's
+  `inbox/notes/`. A run still working reads it at its next step; otherwise the next run on the
+  folder that brings no request of its own (`rebuild … --continue-in <project> --resume`) starts
+  with it. The broken record keeps the note too (`build_features_list` shows it);
+- Plane is told, when it is set up.
+
+If the verdict can't be recorded, the card opens again and the tester is told why.
+
 ## Discord application setup
 
 1. In the Discord Developer Portal, create an application. Its **Application ID** is
@@ -40,9 +83,9 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
 2. Under **Bot**, reset the token and copy it into the env file as `DISCORD_TOKEN`. The bot needs
    no privileged intents: it uses only the `GUILDS` intent.
 3. Under **OAuth2 → URL Generator**, pick the scopes `bot` and `applications.commands`, and these
-   bot permissions: View Channels, Manage Channels, Send Messages, Embed Links, Read Message
-   History, Manage Messages (to pin), Create Public Threads and Send Messages in Threads. Open the
-   URL to add the bot to the server.
+   bot permissions: View Channels, Manage Channels, Send Messages, Embed Links, Attach Files (the
+   tester guide), Read Message History, Manage Messages (to pin), Create Public Threads and Send
+   Messages in Threads. Open the URL to add the bot to the server.
 4. In the server, turn on Developer Mode (User Settings → Advanced) to copy IDs. Create (or pick)
    a category for ports, a porter role and a tester role. The tester mention needs the role to be
    mentionable, or the bot needs the "Mention @everyone, @here and All Roles" permission.
@@ -69,9 +112,65 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `PORTS_ROOT` | yes | The folder that holds each port's `input/` and `project/`. |
 | `CRAFT_CLI` | yes | The path to `craft-anything-cli`. |
 | `MAX_UPLOAD_MB` | no | The download limit in MB (default 200). |
+| `PLANE_URL` | no | The Plane instance's address, such as `http://localhost:8080` (no `/api`). |
+| `PLANE_API_KEY` | no | A Plane API key (see below). Never printed or logged. |
+| `PLANE_WORKSPACE` | no | The workspace slug, as in the Plane address `…/<workspace>/projects/`. |
+| `GITHUB_OWNER` | no | The GitHub user or organisation that gets a private `port-<slug>` repo per port. |
+
+The three `PLANE_*` keys go together: with none of them Plane is off, and with only some the bot
+stops and names the missing one. Without `GITHUB_OWNER` no repo is made.
 
 Outside the file, `CRAFT_DISCORD_LOG` sets the log level (`error`, `warn`, `info` (default),
 `debug`, `off`). Logs go to stderr.
+
+## Plane
+
+With the `PLANE_*` keys set, each port gets a Plane project (named after the app, with an
+identifier of up to five letters from its slug, `RETRO`, then `RETR2`… when taken), and each
+feature a work item whose state follows the builder's:
+
+| Feature | Plane state |
+|---|---|
+| `planned` | Backlog |
+| `in_progress` | In Progress |
+| `ready_to_test` | Ready to test (made in the project when missing) |
+| `passed` | Done |
+| `broken` | Todo, and a new work item "Bug: <feature>" with the `bug` label and the note |
+
+When the feature passes, its open bug work items move to Done. The bot uses Plane's REST API v1
+(`<PLANE_URL>/api/v1/workspaces/<workspace>/…`) with the `X-API-Key` header; an older instance
+without `work-items/` is asked at `issues/`.
+
+To make the API key: sign in to Plane, open **Profile settings → Personal access tokens**, press
+**Add personal access token**, give it a title (and an expiry if you want one), and copy the key
+into the env file as `PLANE_API_KEY`. The key acts as you, so you need to be a member of the
+workspace who may create projects.
+
+A Plane error never stops a port: it goes to the bot's log, and the first error of an outage
+gets one line in the Log thread.
+
+## GitHub repo per port
+
+With `GITHUB_OWNER` set, each port gets a private repo when it starts:
+
+```sh
+gh repo create <owner>/port-<slug> --private
+```
+
+(an existing repo of that name is used). Its link is added to the pinned app profile. The project
+folder is made a git repository (`git init -b main`, remote
+`git@github.com:<owner>/port-<slug>.git`) and is committed and pushed after each check and when
+the port ends. Files over 50 MB are left out (GitHub refuses files over 100 MB), and the Log
+thread says which.
+
+The original app is never pushed: it is kept in `PORTS_ROOT/<slug>/input/`, outside the project
+folder, and the bot's `.gitignore` block also keeps out `.apk`, `.xapk`, `.apks`, `.aab` (and
+`.obb`, `.dex`, `.so`) files anywhere, Craft's own records (captures and pictures of the
+original, notes, transcripts), the originals an extractor took out (`app/Original/`), build
+output and large archives and videos. Lines of the project's own `.gitignore` are kept.
+
+A failed `gh` or `git` command never stops a port: it goes to the bot's log, and the first
+failure of an outage gets one line in the Log thread.
 
 ## Running in WSL
 
@@ -90,6 +189,18 @@ The bot and the rebuilds run inside WSL (Ubuntu). Rebuilds use Claude Code with 
   ```
 
   Set `CRAFT_CLI` to the absolute path of `target/release/craft-anything-cli`.
+
+For the GitHub repos (only with `GITHUB_OWNER`), also in WSL, as the user that runs the bot:
+
+- install the GitHub CLI (`sudo apt install gh`) and sign in with `gh auth login`: pick
+  GitHub.com, SSH as the protocol, and let it upload your SSH public key (or make one first with
+  `ssh-keygen -t ed25519`). The account must be able to create repos under `GITHUB_OWNER`;
+- check the key works: `ssh -T git@github.com` says "You've successfully authenticated";
+- set the name and email the commits carry: `git config --global user.name "…"` and
+  `git config --global user.email "…"`.
+
+The bot runs `gh` and `git` from `PATH`, with no terminal to ask for a password, so an SSH key with
+a passphrase needs `ssh-agent` running for the bot's session.
 
 Start it in tmux, so it keeps running after you close the terminal:
 
@@ -138,3 +249,5 @@ stopped is not resumed when the bot starts again. Start it again with `/port`.
   Only trusted members should have the porter role.
 - `feature` events (per-feature progress on the board) come only from `--user-skills` runs,
   which is what the bot uses.
+- After a restart, Pass and Fail still work on old cards (from `bot.json`), but the board of a
+  finished port is not redrawn.

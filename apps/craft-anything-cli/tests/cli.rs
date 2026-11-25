@@ -472,3 +472,26 @@ fn uninstall_text_shows_why_a_client_blocks_it_and_the_fix() {
     }
     assert_eq!(std::fs::read(cursor.join("mcp.json")).unwrap(), [0xffu8, 0xfe, 0x00]);
 }
+
+/// `--building` points the build tools at a rebuild's project folder from outside a run (the
+/// Discord bot records a tester's verdict this way); a folder that holds no project is refused
+/// and left untouched.
+#[test]
+fn build_tools_record_a_feature_in_the_project_given_with_building() {
+    use craft_anything_engine::workspace::{TargetRef, Workspace, features};
+    let cfg = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::create(dir.path(), "Snake", "A snake game", TargetRef::None).unwrap();
+    let root = ws.root.to_str().unwrap();
+    let params = json!({"name": "Map", "state": "broken", "note": "The map is blank"}).to_string();
+    let out = cli(&["build_feature_report", "--building", root, "--json", params.as_str()], cfg.path());
+    assert!(out.success, "{}{}", out.stdout_text(), out.stderr_text());
+    let saved = features::load(&ws.root).unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!((saved[0].state, saved[0].note.as_deref()), (features::FeatureState::Broken, Some("The map is blank")));
+
+    let empty = tempfile::tempdir().unwrap();
+    let refused = cli(&["build_feature_report", "--building", empty.path().to_str().unwrap(), "--json", params.as_str()], cfg.path());
+    assert!(!refused.success, "{}", refused.stdout_text());
+    assert_eq!(std::fs::read_dir(empty.path()).unwrap().count(), 0, "nothing was created in a folder that holds no project");
+}

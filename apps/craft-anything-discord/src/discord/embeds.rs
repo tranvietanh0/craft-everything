@@ -1,8 +1,9 @@
-//! Embeds: the pinned app profile and the progress board.
+//! Embeds: the pinned app profile and the progress board (tester cards are drawn in `card`).
 
 use craft_anything_discord::board::BoardView;
 use craft_anything_discord::identify::AppIdentity;
 use craft_anything_discord::run::Target;
+use craft_anything_discord::text::clip;
 use serenity::all::{Colour, CreateEmbed, UserId};
 
 /// Discord's limit for one embed field's value, in characters.
@@ -13,16 +14,8 @@ const BYTES_PER_MB: f64 = 1024.0 * 1024.0;
 const RUNNING: Colour = Colour::BLURPLE;
 const PASSED: Colour = Colour::DARK_GREEN;
 const FAILED: Colour = Colour::RED;
-
-/// Cuts `text` to `max` characters, ending with `…` when it was longer.
-pub fn clip(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        return text.to_owned();
-    }
-    let mut cut: String = text.chars().take(max.saturating_sub(1)).collect();
-    cut.push('…');
-    cut
-}
+/// A tester card.
+pub const TESTING: Colour = Colour::GOLD;
 
 pub fn profile_embed(app: &AppIdentity, target: Target, requester: UserId, file_name: &str, bytes: u64) -> CreateEmbed {
     let name = if app.label_from_file { format!("{} (name from file)", app.label) } else { app.label.clone() };
@@ -65,17 +58,4 @@ pub fn board_embed(label: &str, view: &BoardView) -> CreateEmbed {
         embed = embed.field("Result", clip(outcome, FIELD_LIMIT), false);
     }
     embed
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clipped_text_fits_the_limit() {
-        let long = "é".repeat(2_000);
-        let cut = clip(&long, FIELD_LIMIT);
-        assert!(cut.chars().count() <= FIELD_LIMIT && cut.ends_with('…'));
-        assert_eq!(clip("short", FIELD_LIMIT), "short");
-    }
 }

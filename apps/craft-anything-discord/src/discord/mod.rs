@@ -1,21 +1,55 @@
-//! The Discord side: sign in, register `/port` in the guild, and hand each `/port` to [`port`].
-//! Only the `GUILDS` intent is asked for: slash commands and buttons arrive as interactions.
+//! The Discord side: sign in, register `/port` in the guild, hand each `/port` to [`port`] and
+//! each tester-card press to [`card`]. Only the `GUILDS` intent is asked for: slash commands,
+//! buttons and forms arrive as interactions.
 
+mod card;
 mod command;
 mod embeds;
+mod live;
 mod port;
 mod runner;
+mod sync;
 
 use craft_anything_discord::config::Config;
+use craft_anything_discord::plane::{HttpPlane, PlaneApi};
 use craft_anything_discord::queue::RebuildQueue;
-use serenity::all::{ApplicationId, Client, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready};
+use craft_anything_discord::repo::{Shell, SystemShell};
+use craft_anything_discord::review::{CliRecorder, FeatureRecorder};
+use craft_anything_discord::tester::Press;
+use serenity::all::{ApplicationId, ChannelId, Client, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Shared by every handler: the settings and the one-at-a-time rebuild queue.
+/// Shared by every handler: the settings, the one-at-a-time rebuild queue, the ports the bot
+/// knows in memory (by channel) and the outside services.
 pub struct Bot {
     pub config: Config,
     pub queue: Mutex<RebuildQueue<runner::Job>>,
+    pub ports: Mutex<HashMap<ChannelId, Arc<live::Port>>>,
+    pub services: Arc<Services>,
+}
+
+/// What the bot calls outside Discord, behind traits (the library tests them with fakes).
+pub struct Services {
+    /// Records a tester's verdict through the engine.
+    pub recorder: Box<dyn FeatureRecorder>,
+    /// `None` when the `PLANE_*` keys are not set.
+    pub plane: Option<Box<dyn PlaneApi>>,
+    /// `gh` and `git`, used when `GITHUB_OWNER` is set.
+    pub shell: Box<dyn Shell>,
+    pub github_owner: Option<String>,
+}
+
+impl Services {
+    fn from_config(config: &Config) -> Services {
+        Services {
+            recorder: Box::new(CliRecorder { craft_cli: config.craft_cli.clone() }),
+            plane: config.plane.as_ref().map(|p| Box::new(HttpPlane::new(p)) as Box<dyn PlaneApi>),
+            shell: Box::new(SystemShell),
+            github_owner: config.github_owner.clone(),
+        }
+    }
 }
 
 struct Handler {
@@ -37,10 +71,20 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(cmd) = interaction
-            && cmd.data.name == command::PORT
-        {
-            port::handle(&ctx, &cmd, &self.bot).await;
+        match interaction {
+            Interaction::Command(cmd) if cmd.data.name == command::PORT => port::handle(&ctx, &cmd, &self.bot).await,
+            // Other buttons (the `/port` confirmation) are read by their own collector.
+            Interaction::Component(press) => {
+                if let Some(which) = Press::parse(&press.data.custom_id) {
+                    card::on_press(&ctx, &press, which, &self.bot).await;
+                }
+            }
+            Interaction::Modal(form) => {
+                if let Some(Press::FailForm(card)) = Press::parse(&form.data.custom_id) {
+                    card::on_form(&ctx, &form, card, &self.bot).await;
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -49,7 +93,8 @@ impl EventHandler for Handler {
 pub async fn serve(config: Config) -> Result<(), String> {
     let token = config.token.expose().to_owned();
     let app_id = ApplicationId::new(config.app_id);
-    let bot = Arc::new(Bot { config, queue: Mutex::new(RebuildQueue::new()) });
+    let services = Arc::new(Services::from_config(&config));
+    let bot = Arc::new(Bot { config, queue: Mutex::new(RebuildQueue::new()), ports: Mutex::new(HashMap::new()), services });
     let mut client = Client::builder(&token, GatewayIntents::GUILDS)
         .application_id(app_id)
         .event_handler(Handler { bot })
