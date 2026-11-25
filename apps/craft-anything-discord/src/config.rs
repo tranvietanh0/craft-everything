@@ -160,7 +160,7 @@ mod tests {
             "PORTER_ROLE_ID=444",
             "TESTER_ROLE_ID=555",
             "DAILY_CHANNEL_ID=666",
-            "PORTS_ROOT=/home/tranv/ports",
+            "PORTS_ROOT=/srv/craft/ports",
             "CRAFT_CLI=/usr/local/bin/craft-anything-cli",
         ]
         .join("\n")
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn the_env_override_beats_the_home_default() {
-        let home = Path::new("/home/tranv");
+        let home = Path::new("/srv/example-home");
         assert_eq!(env_file_path(Some(" /etc/bot.env "), Some(home)), Ok(PathBuf::from("/etc/bot.env")));
         assert_eq!(env_file_path(None, Some(home)), Ok(home.join(".config").join("craft-discord").join(".env")));
         assert_eq!(env_file_path(Some(""), None), Err(ConfigError::NoHome));
