@@ -13,6 +13,8 @@ struct Fake {
     /// `agent_status` answers still to give, oldest first; then "idle".
     states: Mutex<Vec<&'static str>>,
     started: AtomicBool,
+    /// A message went in: from then on `states` is answered (before, Claude Code is idle).
+    prompted: AtomicBool,
     trust_dialog: bool,
     blocked_prompts: Mutex<u32>,
     sessions: PathBuf,
@@ -25,6 +27,7 @@ impl Fake {
             calls: Mutex::default(),
             states: Mutex::default(),
             started: AtomicBool::new(false),
+            prompted: AtomicBool::new(false),
             trust_dialog: false,
             blocked_prompts: Mutex::new(0),
             sessions,
@@ -70,6 +73,7 @@ impl HerdrCall for Fake {
                 self.started.store(false, Ordering::SeqCst);
                 Ok("{}".into())
             }
+            ["agent", "get", ..] if !self.prompted.load(Ordering::SeqCst) => Ok(r#"{"result":{"agent":{"agent_status":"idle","completion_seq":0}}}"#.into()),
             ["agent", "get", ..] => {
                 let mut states = self.states.lock().unwrap_or_else(PoisonError::into_inner);
                 let state = if states.is_empty() { "idle" } else { states.remove(0) };
@@ -83,6 +87,7 @@ impl HerdrCall for Fake {
                     *blocked -= 1;
                     return Err(HerdrError::new("agent_blocked", "waiting at a dialog"));
                 }
+                self.prompted.store(true, Ordering::SeqCst);
                 let id = self.session_arg();
                 std::fs::create_dir_all(&self.sessions).unwrap();
                 let user = serde_json::json!({"type": "user", "message": {"role": "user", "content": words[3]}}).to_string();
