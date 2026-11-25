@@ -7,6 +7,7 @@
 mod ai_cmd;
 mod output;
 mod rebuild_cmd;
+mod rebuild_events;
 mod setup_cmd;
 mod tool_args;
 
