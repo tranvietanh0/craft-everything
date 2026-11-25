@@ -5202,3 +5202,24 @@ fn the_stop_files_are_the_projects_own() {
     use craft_anything_engine::workspace::OWN_NAMES;
     assert!(OWN_NAMES.contains(&craft_anything_engine::tools::deep::STOPPED) && OWN_NAMES.contains(&craft_anything_engine::tools::deep::STOP_LOCK));
 }
+
+#[test]
+fn user_skills_need_deep_mode_and_claude_code() {
+    let entry = |model: &str, kind: BackendKind| crate::BackendEntry {
+        config: crate::BackendConfig { name: model.into(), kind, model: model.into(), base_url: None, ssh_host: None, enabled: true },
+        options: Default::default(),
+    };
+    let on = RunOptions { user_skills: true, ..RunOptions::default() };
+    let claude = entry("claude-code", BackendKind::AgentCli);
+    assert!(check_user_skills(&on, &claude, true).is_ok());
+    let clean_room = check_user_skills(&on, &claude, false).unwrap_err();
+    assert!(clean_room.message.contains("Deep mode"), "said plainly, not dropped: {clean_room:?}");
+    let other = check_user_skills(&on, &entry("codex", BackendKind::AgentCli), true).unwrap_err();
+    assert!(other.message.contains("Claude Code"), "{other:?}");
+    assert!(check_user_skills(&on, &entry("scripted", BackendKind::OpenaiCompatible), true).is_err());
+    // Off, nothing is checked or changed.
+    assert!(check_user_skills(&RunOptions::default(), &entry("codex", BackendKind::AgentCli), false).is_ok());
+    assert_eq!(builder_preamble(false), BUILDER_PREAMBLE);
+    let with = builder_preamble(true);
+    assert!(with.starts_with(BUILDER_PREAMBLE) && with.contains("Skill tool") && with.contains("tests/<feature>.md"), "{with}");
+}

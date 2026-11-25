@@ -21,6 +21,7 @@ const LABELS: &[(ActionKind, &str)] = &[
     (ActionKind::DeleteOutside, "Deleting outside the project"),
     (ActionKind::System, "System changes"),
     (ActionKind::OtherTools, "Other tools"),
+    (ActionKind::Skills, "Your Claude Code skills"),
 ];
 
 /// Other words for a kind after `/approvals`, as well as its own name (`publish`).

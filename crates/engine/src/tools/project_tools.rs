@@ -144,7 +144,7 @@ pub fn specs() -> Vec<ToolSpec> {
         ToolSpec {
             id: "project_approvals_set",
             title: "Choose what the builder's approvals get",
-            summary: "Choose, for one kind of builder action in a project, whether it goes ahead (`allow`), waits for the person's OK on a card (`ask`) or is refused (`refuse`); `default` follows Auto mode. Kinds: `web` (reading websites, searching), `commands` (outside the usual build commands), `outside_files` (changing files outside the project), `publish` (git push, npm publish, gh pr create…), `delete_outside`, `system` (system changes and files, Craft Anything's own records), `other_tools`. With no kind, says what every kind gets now. Takes effect from the builder's next action, also mid-build. Only the person changes these: an agent's call may only make a kind stricter.",
+            summary: "Choose, for one kind of builder action in a project, whether it goes ahead (`allow`), waits for the person's OK on a card (`ask`) or is refused (`refuse`); `default` follows Auto mode. Kinds: `web` (reading websites, searching), `commands` (outside the usual build commands), `outside_files` (changing files outside the project), `publish` (git push, npm publish, gh pr create…), `delete_outside`, `system` (system changes and files, Craft Anything's own records), `skills` (starting one of the person's own Claude Code skills), `other_tools`. With no kind, says what every kind gets now. Takes effect from the builder's next action, also mid-build. Only the person changes these: an agent's call may only make a kind stricter.",
             beginner: "Chooses what the builder may do without asking you.",
             toolset: Toolset::Projects,
             effects: Effects::WRITES_FILESYSTEM,

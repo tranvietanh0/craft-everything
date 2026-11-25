@@ -43,6 +43,34 @@ integration does, why it is shaped this way, and what remains to confirm.
 - Before a build starts, `claude auth status` is checked. If Claude Code isn't signed in, the run
   stops with: "Sign in to Claude Code: open a terminal and run `claude auth login`".
 
+## Using your own Claude Code skills
+
+`craft-anything-cli rebuild … --deep --user-skills` lets a Deep Claude Code builder use the
+person's own Claude Code setup:
+
+- the `Skill` tool is added to the builder's tools (`Agent` stays), so skills in `~/.claude/skills`
+  can run, including ones that run as a forked subagent;
+- `--strict-mcp-config` is left out, so the person's own MCP servers load beside ours (our
+  `--mcp-config` is still passed);
+- the builder's preamble says the skills are there, an Android package (`.apk`, `.xapk`,
+  `.apks`, `.aab`) target should use the person's APK-port skill if one is listed, and each
+  finished feature gets a `tests/<feature>.md` (Goal, Setup, Steps, Expected, Not done yet) for
+  human testers.
+
+Starting a skill goes through the approval tool as its own kind, `skills` (Auto mode allows it,
+otherwise the person is asked; "Always" allows the kind, and `project_approvals_set` can refuse
+it). Whatever the skill then does goes through the approval tool like any other action of the
+builder, and so does a call to one of the person's own MCP servers (an "other tools" action).
+
+The trade-off: the person's own hooks, skills and MCP servers run with the person's own
+permissions. Craft Anything's approvals cover what the builder asks Claude Code to do, but not
+what a hook or an MCP server does on its own. That is why it is off by default and a run asks
+for it each time (it is never saved with the backend).
+
+It needs Deep mode: a skill can read anything, which Clean room's approval tool can't keep out of
+the original, so Clean room never gets `Skill` and the run stops with a message saying so. Other
+builders have no such skills, so asking for it with one is refused the same way, not ignored.
+
 ## Chats and questions in Clean room
 
 Outside a build there is no approval tool, so Clean room's rule that nothing inside the original is

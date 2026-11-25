@@ -59,6 +59,10 @@ pub struct RebuildArgs {
     /// within the project's asset budget). Change it later with `project-assets-allow`.
     #[arg(long)]
     pub generate_assets: bool,
+    /// Let Claude Code use your own Claude Code skills and MCP servers while it builds. They run
+    /// with your permissions. Needs --deep and Claude Code as the builder.
+    #[arg(long)]
+    pub user_skills: bool,
 }
 
 pub fn rebuild(cli: &Cli, a: &RebuildArgs) -> u8 {
@@ -110,6 +114,10 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
     }
     if a.generate_assets && a.continue_in.is_some() {
         return Err(ToolError::invalid("--generate-assets is for new projects.").with_remediation("Use project-assets-allow for an existing project."));
+    }
+    if a.user_skills && engine.session().clean_room() {
+        return Err(ToolError::invalid("--user-skills needs Deep mode: a skill can read anything, so Clean room can't offer them.")
+            .with_remediation("Add --deep, or leave out --user-skills."));
     }
     ensure_agent(&hub, a.backend.as_deref())?;
     // Refuse an unknown or switched-off name before opening or making a project: a command that
@@ -168,6 +176,7 @@ fn run(cli: &Cli, a: &RebuildArgs) -> Result<bool, ToolError> {
         good_enough,
         beginner: !cli.json,
         clean_room: Some(engine.session().clean_room()),
+        user_skills: a.user_skills,
         ..RunOptions::default()
     };
     let mut run = RebuildRun::start(&hub, ws, opts)?;

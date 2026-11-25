@@ -181,7 +181,7 @@ pub enum Done {
     },
     AgentModelChoices {
         request: u64,
-        context: craft_anything_ai::ModelContext,
+        context: Box<craft_anything_ai::ModelContext>,
         result: Result<Vec<craft_anything_ai::AgentModel>, ToolError>,
     },
     ModelTuning {
@@ -1868,7 +1868,7 @@ impl CraftApp {
             Done::AgentModelChoices { request, context, result } => {
                 // Keep a matching result even while the engine is busy. Settings invalidates
                 // changed contexts once it can read the session again; saving rechecks too.
-                if let Some(picker) = self.agent_model_picker.as_mut().filter(|p| p.request == request && p.context == context) {
+                if let Some(picker) = self.agent_model_picker.as_mut().filter(|p| p.request == request && p.context == *context) {
                     picker.result = Some(result.map_err(|e| e.for_people()));
                 }
             }
