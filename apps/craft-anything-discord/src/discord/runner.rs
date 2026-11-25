@@ -9,6 +9,7 @@ use craft_anything_discord::coalesce::{Coalescer, EDIT_INTERVAL, MESSAGE_LIMIT, 
 use craft_anything_discord::events::{Event, Line, parse_line};
 use craft_anything_discord::log::log_line;
 use craft_anything_discord::run::{self, ChildEnd, Finished, Target, Verdict};
+use craft_anything_discord::text::clip;
 use craft_anything_evidence::ToolError;
 use craft_anything_platform::process::Output;
 use serenity::all::{ChannelId, CreateAllowedMentions, CreateMessage, EditMessage, Http, MessageId, RoleId};
@@ -165,7 +166,7 @@ fn child_end(result: &Result<Output, ToolError>) -> ChildEnd {
 }
 
 async fn post_verdict(http: &Http, bot: &Bot, job: &Job, verdict: &Verdict) {
-    let said = embeds::clip(&verdict.message, MESSAGE_CHARS);
+    let said = clip(&verdict.message, MESSAGE_CHARS);
     let message = if verdict.mention_testers {
         let testers = RoleId::new(bot.config.tester_role_id);
         CreateMessage::new()
