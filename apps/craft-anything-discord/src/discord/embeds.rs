@@ -1,4 +1,4 @@
-//! Embeds: the pinned app profile and the progress board.
+//! Embeds: the pinned app profile and the progress board (tester cards are drawn in `card`).
 
 use craft_anything_discord::board::BoardView;
 use craft_anything_discord::identify::AppIdentity;
@@ -14,6 +14,8 @@ const BYTES_PER_MB: f64 = 1024.0 * 1024.0;
 const RUNNING: Colour = Colour::BLURPLE;
 const PASSED: Colour = Colour::DARK_GREEN;
 const FAILED: Colour = Colour::RED;
+/// A tester card.
+pub const TESTING: Colour = Colour::GOLD;
 
 pub fn profile_embed(app: &AppIdentity, target: Target, requester: UserId, file_name: &str, bytes: u64) -> CreateEmbed {
     let name = if app.label_from_file { format!("{} (name from file)", app.label) } else { app.label.clone() };

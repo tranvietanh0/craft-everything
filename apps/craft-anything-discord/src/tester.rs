@@ -23,7 +23,8 @@ pub fn card_title(feature: &str) -> String {
 }
 
 /// Where a feature's live card stands, as the bot last left it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CardStatus {
     /// Pass and Fail are still live.
     Open,
@@ -51,6 +52,36 @@ pub fn card_action(previous: Option<CardStatus>, broken_since: bool) -> CardActi
         Some(_) if !broken_since => CardAction::Skip,
         Some(CardStatus::Open) => CardAction::PostFresh { disable_previous: true },
         Some(CardStatus::Closed) => CardAction::PostFresh { disable_previous: false },
+    }
+}
+
+/// A press on a card, read back from its component's custom id: the Pass button, the Fail button,
+/// or the Fail form being sent. The number is the card's id within its port.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Press {
+    Pass(u64),
+    Fail(u64),
+    FailForm(u64),
+}
+
+const PASS_ID: &str = "tcard-pass:";
+const FAIL_ID: &str = "tcard-fail:";
+const FORM_ID: &str = "tcard-form:";
+
+impl Press {
+    /// The custom id Discord hands back when this is pressed or sent.
+    pub fn custom_id(self) -> String {
+        match self {
+            Press::Pass(card) => format!("{PASS_ID}{card}"),
+            Press::Fail(card) => format!("{FAIL_ID}{card}"),
+            Press::FailForm(card) => format!("{FORM_ID}{card}"),
+        }
+    }
+
+    /// `None` for an id that is not a card's (the `/port` confirmation buttons, anything else).
+    pub fn parse(custom_id: &str) -> Option<Press> {
+        let card = |prefix: &str| custom_id.strip_prefix(prefix).and_then(|n| n.parse::<u64>().ok());
+        card(PASS_ID).map(Press::Pass).or_else(|| card(FAIL_ID).map(Press::Fail)).or_else(|| card(FORM_ID).map(Press::FailForm))
     }
 }
 
@@ -175,6 +206,16 @@ mod tests {
     #[test]
     fn a_closed_card_with_no_break_stays_closed() {
         assert_eq!(card_action(Some(CardStatus::Closed), false), CardAction::Skip);
+    }
+
+    #[test]
+    fn a_press_reads_back_from_its_custom_id_and_foreign_ids_do_not() {
+        for press in [Press::Pass(7), Press::Fail(7), Press::FailForm(12)] {
+            assert_eq!(Press::parse(&press.custom_id()), Some(press));
+        }
+        for foreign in ["port-confirm", "tcard-pass:", "tcard-pass:x", "tcard-other:3"] {
+            assert_eq!(Press::parse(foreign), None, "{foreign}");
+        }
     }
 
     #[test]

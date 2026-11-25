@@ -4,12 +4,15 @@
 use super::Bot;
 use super::command::{self, PortOptions};
 use super::embeds;
+use super::live::Port;
 use super::runner::{self, Job};
+use super::sync::SyncJob;
 use craft_anything_discord::board::Board;
 use craft_anything_discord::identify::{self, AppIdentity};
 use craft_anything_discord::intake::{self, Source};
 use craft_anything_discord::queue::Admission;
 use craft_anything_discord::slug;
+use craft_anything_discord::state::PortState;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, CommandInteraction, Context, CreateActionRow, CreateButton, CreateChannel, CreateInteractionResponse,
     CreateInteractionResponseMessage, CreateMessage, CreateThread, EditInteractionResponse, GuildId, RoleId,
@@ -127,8 +130,23 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
         .map_err(|e| format!("couldn't create the Log thread: {e}"))?
         .id;
 
-    let job =
-        Job { channel, board_message: board.id, thread, input: file, project: intake::project_dir(&config.ports_root, &slug), target: options.target, label };
+    let state = PortState {
+        slug: slug.clone(),
+        label: label.clone(),
+        channel: channel.get(),
+        thread: thread.get(),
+        board_message: board.id.get(),
+        profile_message: profile.id.get(),
+        ..PortState::default()
+    };
+    if let Err(e) = state.save(&config.ports_root.join(&slug)) {
+        log::warn!("{e}");
+    }
+    let port = Port::start(ctx.http.clone(), bot, state, Some(Board::new()));
+    bot.ports.lock().await.insert(channel, Arc::clone(&port));
+    // The Plane project and the GitHub repo are made now, not when the port's turn comes.
+    port.queue(SyncJob::Setup);
+    let job = Job { port, input: file, target: options.target, label };
     let admission = bot.queue.lock().await.submit(job);
     match admission {
         Admission::Start(job) => {

@@ -47,6 +47,10 @@ pub struct Cli {
     /// Clean room for this run only, whatever Settings say: nothing inside a target is read.
     #[arg(long, global = true)]
     pub clean_room: bool,
+    /// A project folder made by `rebuild`: the build tools (`build_feature_report`,
+    /// `build_features_list`) work on it, as they do for its builder.
+    #[arg(long, global = true, value_name = "PROJECT_FOLDER")]
+    pub building: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -217,6 +221,15 @@ pub fn make_engine(project: Option<&Path>, deep_for_run: Option<bool>) -> Result
     let mut layer_tools = craft_anything_ai::tools();
     layer_tools.extend(craft_anything_setup::tools::specs());
     Ok(Engine::shared_with(session, layer_tools, plugins))
+}
+
+/// The inbox of the project a rebuild builds in `dir`, which the build tools read their project
+/// from. The folder must already hold a rebuild project: nothing is created.
+fn building_inbox(dir: &Path) -> Result<craft_anything_engine::inbox::InboxDir, ToolError> {
+    let root = std::path::absolute(dir).map_err(|e| ToolError::io(dir.display(), e))?;
+    let ws = craft_anything_engine::workspace::Workspace::open(&root)
+        .map_err(|e| e.with_remediation("--building takes a project folder made by `rebuild` (it holds the project's manifest)."))?;
+    Ok(craft_anything_engine::inbox::InboxDir(ws.inbox_dir()))
 }
 
 fn open_or_create_project(dir: &Path) -> Result<Project, ToolError> {
@@ -488,6 +501,7 @@ fn tool(cli: &Cli, args: &[String], f: Format) -> u8 {
     // Global flags written after the tool name land here; pick them out.
     let mut f = f;
     let (mut allow_run, mut deep, mut clean_room) = (cli.allow_run, cli.deep, cli.clean_room);
+    let mut building = cli.building.clone();
     let mut rest_args = Vec::new();
     let mut it = rest.iter().peekable();
     // `--format` and `--project` are left to tool_args when the tool has an option of that name
@@ -497,6 +511,10 @@ fn tool(cli: &Cli, args: &[String], f: Format) -> u8 {
             "--allow-run" => allow_run = true,
             "--deep" => deep = true,
             "--clean-room" => clean_room = true,
+            "--building" => match it.next() {
+                Some(dir) => building = Some(PathBuf::from(dir)),
+                None => return usage("--building needs a project folder"),
+            },
             "--json" if it.peek().is_none_or(|n| !(n.starts_with('{') || n.starts_with('@') || n.as_str() == "-")) => f = Format::Json,
             _ => rest_args.push(a.clone()),
         }
@@ -506,7 +524,7 @@ fn tool(cli: &Cli, args: &[String], f: Format) -> u8 {
     if deep && clean_room {
         return usage("--deep and --clean-room can't be used together");
     }
-    let mut cli = Cli { format: f, json: false, project: cli.project.clone(), allow_run, deep, clean_room, command: Command::Commands };
+    let mut cli = Cli { format: f, json: false, project: cli.project.clone(), allow_run, deep, clean_room, building, command: Command::Commands };
     let mut engine = match make_engine(cli.project.as_deref(), cli.deep_for_run()) {
         Ok(e) => e,
         Err(e) => return fail(&e, f),
@@ -524,6 +542,14 @@ fn tool(cli: &Cli, args: &[String], f: Format) -> u8 {
             Ok(e) => e,
             Err(e) => return fail(&e, f),
         };
+    }
+    if let Some(dir) = &cli.building {
+        match building_inbox(dir) {
+            Ok(inbox) => {
+                engine.session().ext.insert(Arc::new(inbox));
+            }
+            Err(e) => return fail(&e, f),
+        }
     }
     let cli = &cli;
     let rest = rest_args.as_slice();
