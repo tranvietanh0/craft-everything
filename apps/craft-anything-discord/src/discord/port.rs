@@ -5,12 +5,13 @@ use super::Bot;
 use super::command::{self, PortOptions};
 use super::embeds;
 use super::live::Port;
-use super::runner::{self, Job};
+use super::scheduler::{self, Job};
 use super::sync::SyncJob;
 use craft_anything_discord::board::Board;
+use craft_anything_discord::cost::Usage;
 use craft_anything_discord::identify::{self, AppIdentity};
 use craft_anything_discord::intake::{self, Source};
-use craft_anything_discord::queue::Admission;
+use craft_anything_discord::jobs::JobKind;
 use craft_anything_discord::slug;
 use craft_anything_discord::state::PortState;
 use serenity::all::{
@@ -121,7 +122,7 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
     let profile = CreateMessage::new().embed(embeds::profile_embed(&app, options.target, cmd.user.id, &file_name, bytes));
     let profile = channel.send_message(&ctx.http, profile).await.map_err(|e| format!("couldn't post the app profile: {e}"))?;
     pin(ctx, channel, profile.id).await;
-    let board = CreateMessage::new().embed(embeds::board_embed(&label, &Board::new().render(Duration::ZERO)));
+    let board = CreateMessage::new().embed(embeds::board_embed(&label, &Board::new().render(Duration::ZERO, Usage::default().describe())));
     let board = channel.send_message(&ctx.http, board).await.map_err(|e| format!("couldn't post the progress board: {e}"))?;
     pin(ctx, channel, board.id).await;
     let thread = channel
@@ -132,28 +133,30 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
 
     let state = PortState {
         slug: slug.clone(),
-        label: label.clone(),
+        label,
         channel: channel.get(),
         thread: thread.get(),
         board_message: board.id.get(),
         profile_message: profile.id.get(),
+        board: Some(Board::new()),
         ..PortState::default()
     };
     if let Err(e) = state.save(&config.ports_root.join(&slug)) {
         log::warn!("{e}");
     }
-    let port = Port::start(ctx.http.clone(), bot, state, Some(Board::new()));
+    let port = Port::start(ctx.http.clone(), bot, state);
     bot.ports.lock().await.insert(channel, Arc::clone(&port));
     // The Plane project and the GitHub repo are made now, not when the port's turn comes.
     port.queue(SyncJob::Setup);
-    let job = Job { port, input: file, target: options.target, label };
-    let admission = bot.queue.lock().await.submit(job);
-    match admission {
-        Admission::Start(job) => {
-            tokio::spawn(runner::run_queue(ctx.http.clone(), Arc::clone(bot), job));
+    let job = {
+        let mut live = port.live.lock().await;
+        Job::record(&port, &mut live, JobKind::Port, file, options.target)
+    };
+    match scheduler::enqueue(&ctx.http, bot, job).await {
+        None => {
             progress(ctx, cmd, &format!("✅ Started: follow it in <#{channel}>.")).await;
         }
-        Admission::Queued { position } => {
+        Some(position) => {
             let waiting = format!("⏳ Waiting in line: position {position}. It starts when the ports before it finish.");
             if let Err(e) = channel.say(&ctx.http, &waiting).await {
                 log::warn!("couldn't post the queue position in {channel}: {e}");

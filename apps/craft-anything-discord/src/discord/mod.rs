@@ -1,13 +1,18 @@
-//! The Discord side: sign in, register `/port` in the guild, hand each `/port` to [`port`] and
-//! each tester-card press to [`card`]. Only the `GUILDS` intent is asked for: slash commands,
-//! buttons and forms arrive as interactions.
+//! The Discord side: sign in, register the commands in the guild, hand each `/port` to [`port`],
+//! each control command to [`commands`] and each tester-card press to [`card`]. On the first
+//! sign-in the saved queue is restored ([`scheduler::recover`]) and the daily summary starts
+//! ([`summary`]). Only the `GUILDS` intent is asked for: slash commands, buttons and forms arrive
+//! as interactions.
 
 mod card;
 mod command;
+mod commands;
 mod embeds;
 mod live;
 mod port;
 mod runner;
+mod scheduler;
+mod summary;
 mod sync;
 
 use craft_anything_discord::config::Config;
@@ -15,19 +20,26 @@ use craft_anything_discord::plane::{HttpPlane, PlaneApi};
 use craft_anything_discord::queue::RebuildQueue;
 use craft_anything_discord::repo::{Shell, SystemShell};
 use craft_anything_discord::review::{CliRecorder, FeatureRecorder};
+use craft_anything_discord::saved_queue::Recovery;
 use craft_anything_discord::tester::Press;
 use serenity::all::{ApplicationId, ChannelId, Client, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
 
 /// Shared by every handler: the settings, the one-at-a-time rebuild queue, the ports the bot
 /// knows in memory (by channel) and the outside services.
 pub struct Bot {
     pub config: Config,
-    pub queue: Mutex<RebuildQueue<runner::Job>>,
+    pub queue: Mutex<RebuildQueue<scheduler::Job>>,
     pub ports: Mutex<HashMap<ChannelId, Arc<live::Port>>>,
     pub services: Arc<Services>,
+    /// Set on the first sign-in: a reconnect signs in again, but the queue is restored and the
+    /// summary started once.
+    started: AtomicBool,
+    /// The saved queue, read before signing in and restored on the first sign-in.
+    recovery: Mutex<Option<Recovery>>,
 }
 
 /// What the bot calls outside Discord, behind traits (the library tests them with fakes).
@@ -61,18 +73,26 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         log::info!("logged in as {}", ready.user.name);
         let guild = GuildId::new(self.bot.config.guild_id);
-        match guild.set_commands(&ctx.http, vec![command::port_command()]).await {
+        match guild.set_commands(&ctx.http, command::commands()).await {
             Ok(commands) => {
                 let names: Vec<String> = commands.iter().map(|c| format!("/{}", c.name)).collect();
                 log::info!("registered {} in guild {guild}", names.join(", "));
             }
-            Err(e) => log::error!("couldn't register /{} in guild {guild}: {e}", command::PORT),
+            Err(e) => log::error!("couldn't register the commands in guild {guild}: {e}"),
+        }
+        if !self.bot.started.swap(true, Ordering::SeqCst) {
+            let (http, bot) = (Arc::clone(&ctx.http), Arc::clone(&self.bot));
+            if let Some(recovery) = self.bot.recovery.lock().await.take() {
+                tokio::spawn(async move { scheduler::recover(&http, &bot, recovery).await });
+            }
+            tokio::spawn(summary::run(Arc::clone(&ctx.http), Arc::clone(&self.bot)));
         }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(cmd) if cmd.data.name == command::PORT => port::handle(&ctx, &cmd, &self.bot).await,
+            Interaction::Command(cmd) if command::CONTROL.iter().any(|(name, _)| cmd.data.name == *name) => commands::handle(&ctx, &cmd, &self.bot).await,
             // Other buttons (the `/port` confirmation) are read by their own collector.
             Interaction::Component(press) => {
                 if let Some(which) = Press::parse(&press.data.custom_id) {
@@ -94,7 +114,15 @@ pub async fn serve(config: Config) -> Result<(), String> {
     let token = config.token.expose().to_owned();
     let app_id = ApplicationId::new(config.app_id);
     let services = Arc::new(Services::from_config(&config));
-    let bot = Arc::new(Bot { config, queue: Mutex::new(RebuildQueue::new()), ports: Mutex::new(HashMap::new()), services });
+    let recovery = scheduler::load_saved(&config.ports_root);
+    let bot = Arc::new(Bot {
+        config,
+        queue: Mutex::new(RebuildQueue::new()),
+        ports: Mutex::new(HashMap::new()),
+        services,
+        started: AtomicBool::new(false),
+        recovery: Mutex::new(Some(recovery)),
+    });
     let mut client = Client::builder(&token, GatewayIntents::GUILDS)
         .application_id(app_id)
         .event_handler(Handler { bot })

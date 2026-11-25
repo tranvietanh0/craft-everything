@@ -1445,6 +1445,7 @@ dependencies = [
 name = "craft-anything-discord"
 version = "0.6.1"
 dependencies = [
+ "chrono",
  "craft-anything-ai",
  "craft-anything-engine",
  "craft-anything-evidence",

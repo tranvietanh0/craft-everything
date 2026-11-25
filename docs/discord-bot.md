@@ -19,7 +19,7 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
    taken). Its topic is the package and the target. The app profile and the progress board are
    posted and pinned, and a thread named "Log" is opened.
 5. **Run.** One port runs at a time. Anyone else is told their place in line, and the next port
-   starts when the current one ends. The bot runs:
+   starts when the current one ends. The line is saved (see [Restarts](#restarts)). The bot runs:
 
    ```sh
    $CRAFT_CLI rebuild <input file> "<request>" --deep --user-skills --unattended \
@@ -27,7 +27,9 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
      --events ndjson --project-folder $PORTS_ROOT/<slug>/project [--build-with unity]
    ```
 
-   The board is edited at most every 3 seconds. Log lines go to the thread in batches. Only
+   The board is edited at most every 3 seconds. It shows the tokens and cost of the run and,
+   once the port has had more than one run, the port's total (see [Cost](#cost)). Log lines go
+   to the thread in batches. Only
    Unity is a stack the CLI knows, so `target: cocos` and `target: app` name the target in the
    request and let the builder choose the stack.
 
@@ -37,8 +39,62 @@ and runs `craft-anything-cli rebuild` on it. Progress shows in a channel made fo
    (`TESTER_ROLE_ID`). A failed run says why. If the program crashed or stopped without
    finishing, the end of its error output is shown (up to 1500 characters).
 
-What the bot keeps about a port (its channel, its tester cards, the Plane and GitHub ids) is in
-`PORTS_ROOT/<slug>/bot.json`, so cards still work after the bot restarts.
+What the bot keeps about a port (its channel, its tester cards, the Plane and GitHub ids, its runs
+with their status and cost, what happened when for the daily summary, and its last board) is in
+`PORTS_ROOT/<slug>/bot.json`, so cards still work and the board is drawn again after the bot
+restarts.
+
+## Control commands
+
+In a port's channel, members with the porter role (`PORTER_ROLE_ID`) can control its runs. Anyone
+else, and any use outside a port's channel, gets a private refusal. Answers are private; an action
+also gets one line in the channel.
+
+| Command | What it does |
+|---|---|
+| `/status` | The port's stage, its features by state, its place in the queue (running, waiting at position N, or not queued), how long its last run ran, and its cost. |
+| `/stop` | Stops the running build cleanly: the bot asks `craft-anything-cli` to stop (SIGTERM, which it treats as Ctrl+C: it stops the builder, which under herdr presses Escape in the pane, and prints `finished`). After 30 seconds the whole process group is ended. A port still waiting is taken out of the queue. The run is recorded as stopped. |
+| `/resume` | Carries on a stopped, paused, failed or interrupted run where it stopped. The CLI supports this: the bot runs `rebuild - "<request>" … --continue-in $PORTS_ROOT/<slug>/project --resume`, which continues the project's saved session and record and ignores the request. It needs the project folder to hold a project; otherwise use `/retry`. |
+| `/retry` | Queues the last run's request again from the start, keeping the project folder. The folder already holds a project, so the CLI takes the request as a follow-up on it (`--project-folder`, without `--build-with`: the project keeps its stack). |
+| `/note <text>` | Leaves the builder a note (up to 1000 characters), the same way a tester's Fail does (the project's `inbox/notes/`). A running build reads it at its next step; otherwise `/resume` starts with it. The note is also posted in the Log thread. |
+
+`/resume` and `/retry` wait in the same queue as `/port`.
+
+## Cost
+
+Every `turn_done` event adds its tokens and cost to the run's total, saved in `bot.json`; a
+port's total is the sum of its runs. Claude Code in herdr prices its turns at list prices, an
+estimate (`cost_is_estimate`), so a total with any estimated turn is shown as `~$`. The board's
+Usage field and `/status` show it.
+
+## Daily summary
+
+Once a day at `DAILY_SUMMARY_TIME` (default 09:00), the bot posts a summary of the last 24 hours to
+`DAILY_CHANNEL_ID`: each port worked on, the features that reached ready to test, passed or
+broken, the testers' Pass and Fail counts, and the cost. The time is in
+`DAILY_SUMMARY_UTC_OFFSET` (such as `+07:00`) when it is set, otherwise in the system's local time
+zone (on Linux, `TZ` in the bot's environment or `/etc/localtime`). A fixed offset does not follow
+daylight saving time.
+
+The date of the last summary is saved in `PORTS_ROOT/.bot/daily.json` before it is posted, so a
+restart never posts one day twice. A bot that was off at the time posts that day's summary when it
+starts again, the same day. If posting fails before anything went out, the date is given back
+and the bot tries again a minute later.
+
+## Restarts
+
+The queue is saved in `PORTS_ROOT/.bot/queue.json` whenever it changes (written to a temporary
+file, then renamed over the old one). When the bot starts:
+
+- ports that were waiting are queued again, in the same order, and their channel is told;
+- the port that was running is **not** started again: its run is recorded as interrupted, its
+  board says so, and its channel is told to use `/resume` (or `/retry`);
+- every port's pinned board is drawn again from its `bot.json`, and later runs keep editing that
+  same message.
+
+The saved queue is read before the bot signs in, so a new `/port` can't overwrite it first. A
+`queue.json` that can't be read is moved to `queue.json.unreadable` (kept for you to look at), the
+error is logged, and the queue starts empty.
 
 ## Tester cards
 
@@ -70,8 +126,7 @@ to 1000 characters) and "Steps to reproduce" (optional). Sending it records the 
   `--building <project folder>` points the build tools at a rebuild's project from outside its run;
 - the card shows "✅ Passed by <tester>" or "❌ Failed by <tester>" (and what went wrong), and its
   buttons are disabled, so each card is reviewed once;
-- the board shows the feature's new state (until the bot restarts; it doesn't redraw an old
-  board);
+- the board shows the feature's new state;
 - a failure is posted in the Log thread, and left for the builder as a note in the project's
   `inbox/notes/`. A run still working reads it at its next step; otherwise the next run on the
   folder that brings no request of its own (`rebuild … --continue-in <project> --resume`) starts
@@ -94,8 +149,8 @@ If the verdict can't be recorded, the card opens again and the tester is told wh
    a category for ports, a porter role and a tester role. The tester mention needs the role to be
    mentionable, or the bot needs the "Mention @everyone, @here and All Roles" permission.
 
-`/port` is registered as a guild command when the bot signs in, so it appears at once in that
-server only.
+`/port` and the control commands are registered as guild commands when the bot signs in, so they
+appear at once in that server only.
 
 ## Env file
 
@@ -112,7 +167,7 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `PORTS_CATEGORY_ID` | yes | The category that `port-<slug>` channels go in. |
 | `PORTER_ROLE_ID` | yes | Members with this role may use `/port`. |
 | `TESTER_ROLE_ID` | yes | Mentioned when a port finishes OK. |
-| `DAILY_CHANNEL_ID` | yes | Saved for the daily summary. Nothing is posted there yet. |
+| `DAILY_CHANNEL_ID` | yes | Where the [daily summary](#daily-summary) is posted. |
 | `PORTS_ROOT` | yes | The folder that holds each port's `input/` and `project/`. |
 | `CRAFT_CLI` | yes | The path to `craft-anything-cli`. |
 | `MAX_UPLOAD_MB` | no | The download limit in MB (default 200). |
@@ -121,6 +176,8 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `PLANE_WORKSPACE` | no | The workspace slug, as in the Plane address `…/<workspace>/projects/`. |
 | `GITHUB_OWNER` | no | The GitHub user or organisation that gets a private `port-<slug>` repo per port. |
 | `CRAFT_BACKEND` | no | The craft backend that builds (`--backend`). Default `Claude Code (herdr)`; set it empty to pass no `--backend` and let craft choose. |
+| `DAILY_SUMMARY_TIME` | no | The daily summary's local time, 24-hour `HH:MM` (default `09:00`). |
+| `DAILY_SUMMARY_UTC_OFFSET` | no | The summary's time zone as a fixed UTC offset, such as `+07:00` or `-05:30`. Default: the system's local time zone. |
 
 The three `PLANE_*` keys go together: with none of them Plane is off, and with only some the bot
 stops and names the missing one. Without `GITHUB_OWNER` no repo is made.
@@ -244,8 +301,9 @@ journalctl --user -u craft-discord -f
 loginctl enable-linger "$USER"   # keep it running when you are logged out
 ```
 
-On Ctrl+C or SIGTERM the bot signs out, and a running rebuild is stopped. A port that was
-stopped is not resumed when the bot starts again. Start it again with `/port`.
+On Ctrl+C or SIGTERM the bot signs out, and a running rebuild is stopped. When the bot starts
+again, the ports that were waiting are queued again, and the one that was running is marked
+interrupted and offered `/resume` (see [Restarts](#restarts)).
 
 ## Claude Code in herdr
 
@@ -275,11 +333,10 @@ To build headless again (Claude Code in WSL, `claude -p`), set `CRAFT_BACKEND=Cl
 
 ## Limits
 
-- One rebuild at a time. The queue is kept in memory, so ports still waiting are lost if the
-  bot restarts.
+- One rebuild at a time. A run cut off by a restart is not restarted on its own: `/resume` it.
 - The `link` option downloads any `http(s)` address the porter gives, up to the size limit.
   Only trusted members should have the porter role.
 - `feature` events (per-feature progress on the board) come only from `--user-skills` runs,
   which is what the bot uses.
-- After a restart, Pass and Fail still work on old cards (from `bot.json`), but the board of a
-  finished port is not redrawn.
+- Activity for the daily summary is kept for 8 days, and usage is summed per hour, so the
+  summary's cost is counted by the hour a turn ended in.

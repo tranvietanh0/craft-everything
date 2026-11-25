@@ -15,6 +15,9 @@ craft-anything-ai = { workspace = true }
 craft-anything-engine = { workspace = true }
 craft-anything-evidence = { workspace = true }
 craft-anything-platform = { workspace = true }
+# The daily summary's local time, and job and activity times in bot.json (already in the tree
+# through serenity).
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

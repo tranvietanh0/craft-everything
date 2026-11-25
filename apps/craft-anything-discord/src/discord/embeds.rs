@@ -1,8 +1,10 @@
 //! Embeds: the pinned app profile and the progress board (tester cards are drawn in `card`).
 
+use chrono::{DateTime, Utc};
 use craft_anything_discord::board::BoardView;
 use craft_anything_discord::identify::AppIdentity;
 use craft_anything_discord::run::Target;
+use craft_anything_discord::state::PortState;
 use craft_anything_discord::text::clip;
 use serenity::all::{Colour, CreateEmbed, UserId};
 
@@ -29,6 +31,14 @@ pub fn profile_embed(app: &AppIdentity, target: Target, requester: UserId, file_
         .field("Target", target.label(), true)
         .field("Requested by", format!("<@{requester}>"), true)
         .field("File", clip(&format!("{file_name} ({size})"), FIELD_LIMIT), true)
+}
+
+/// The board of a port as its state has it at `now`: the last job's running time and usage. `None`
+/// before the port has a board.
+pub fn port_board(state: &PortState, now: DateTime<Utc>) -> Option<CreateEmbed> {
+    let board = state.board.as_ref()?;
+    let elapsed = state.last_job().map(|j| j.elapsed(now)).unwrap_or_default();
+    Some(board_embed(&state.label, &board.render(elapsed, state.usage_line(None))))
 }
 
 pub fn board_embed(label: &str, view: &BoardView) -> CreateEmbed {

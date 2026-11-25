@@ -1,6 +1,7 @@
 //! The bot's env file: `KEY=VALUE` lines, `#` comments, optional `export ` and matching quotes.
 //! A missing or malformed key is an error that names the key. The token is never printed.
 
+use crate::daily::Schedule;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -79,6 +80,9 @@ pub struct Config {
     /// The craft backend every rebuild uses (`--backend`): `CRAFT_BACKEND`, by default Claude Code
     /// in herdr. Set to an empty value, no `--backend` is passed and craft picks its own.
     pub backend: Option<String>,
+    /// When the daily summary goes to `DAILY_CHANNEL_ID`: `DAILY_SUMMARY_TIME` (default 09:00) in
+    /// `DAILY_SUMMARY_UTC_OFFSET`, or the system's time zone when that is not set.
+    pub daily: Schedule,
 }
 
 /// Where the env file is: the `CRAFT_DISCORD_ENV` override, else `<home>/.config/craft-discord/.env`.
@@ -139,6 +143,8 @@ impl Config {
             plane: plane_settings(map)?,
             github_owner: github_owner(map)?,
             backend: backend(map),
+            daily: Schedule::parse(optional(map, "DAILY_SUMMARY_TIME"), optional(map, "DAILY_SUMMARY_UTC_OFFSET"))
+                .map_err(|(key, reason)| ConfigError::Invalid { key, reason })?,
         })
     }
 }
@@ -239,6 +245,21 @@ mod tests {
         assert_eq!(backend(""), Ok(Some(DEFAULT_BACKEND.to_owned())));
         assert_eq!(backend("CRAFT_BACKEND=Claude Code"), Ok(Some("Claude Code".to_owned())));
         assert_eq!(backend("CRAFT_BACKEND="), Ok(None), "empty: craft chooses");
+    }
+
+    #[test]
+    fn the_daily_summary_time_is_checked() {
+        let at = |extra: &str| {
+            load(&format!(
+                "{}
+{extra}",
+                full_env()
+            ))
+            .map(|c| c.daily.at.to_string())
+        };
+        assert_eq!(at(""), Ok("09:00:00".to_owned()));
+        assert_eq!(at("DAILY_SUMMARY_TIME=18:30"), Ok("18:30:00".to_owned()));
+        assert!(matches!(at("DAILY_SUMMARY_TIME=6pm"), Err(ConfigError::Invalid { key: "DAILY_SUMMARY_TIME", .. })));
     }
 
     #[test]
