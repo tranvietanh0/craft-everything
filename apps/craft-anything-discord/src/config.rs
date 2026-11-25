@@ -83,6 +83,12 @@ pub struct Config {
     /// When the daily summary goes to `DAILY_CHANNEL_ID`: `DAILY_SUMMARY_TIME` (default 09:00) in
     /// `DAILY_SUMMARY_UTC_OFFSET`, or the system's time zone when that is not set.
     pub daily: Schedule,
+    /// `PRETRUST_PORTS`: trust each port's project folder in Claude Code's config before a herdr
+    /// build ([`crate::pretrust`]). Off unless set to `1`, `true`, `yes` or `on`.
+    pub pretrust_ports: bool,
+    /// `CLAUDE_CONFIG_JSON`: Claude Code's `.claude.json` for `PRETRUST_PORTS`, when it isn't in the
+    /// home folder herdr runs Claude Code under.
+    pub claude_config_json: Option<PathBuf>,
 }
 
 /// Where the env file is: the `CRAFT_DISCORD_ENV` override, else `<home>/.config/craft-discord/.env`.
@@ -145,6 +151,8 @@ impl Config {
             backend: backend(map),
             daily: Schedule::parse(optional(map, "DAILY_SUMMARY_TIME"), optional(map, "DAILY_SUMMARY_UTC_OFFSET"))
                 .map_err(|(key, reason)| ConfigError::Invalid { key, reason })?,
+            pretrust_ports: flag(map, "PRETRUST_PORTS")?,
+            claude_config_json: optional(map, "CLAUDE_CONFIG_JSON").map(PathBuf::from),
         })
     }
 }
@@ -155,6 +163,16 @@ fn required<'a>(map: &'a BTreeMap<String, String>, key: &'static str) -> Result<
 
 fn optional<'a>(map: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
     map.get(key).map(|v| v.trim()).filter(|v| !v.is_empty())
+}
+
+/// An on/off key: off when absent or empty; `1`, `true`, `yes` or `on` (any case) is on, and
+/// `0`, `false`, `no` or `off` is off. Anything else is an error, so a typo doesn't turn it off quietly.
+fn flag(map: &BTreeMap<String, String>, key: &'static str) -> Result<bool, ConfigError> {
+    match optional(map, key).map(str::to_ascii_lowercase).as_deref() {
+        None | Some("0" | "false" | "no" | "off") => Ok(false),
+        Some("1" | "true" | "yes" | "on") => Ok(true),
+        Some(_) => Err(ConfigError::Invalid { key, reason: "expected 1 or 0".to_owned() }),
+    }
 }
 
 /// The bot's default backend: the person's own Claude Code, in a herdr pane they can watch.
@@ -338,6 +356,19 @@ mod tests {
         let text = format!("{}\nPLANE_URL=http://localhost:8080\nPLANE_API_KEY=plane-secret-7\nPLANE_WORKSPACE=craft", full_env());
         let shown = format!("{:?}", load(&text).expect("loads"));
         assert!(!shown.contains("plane-secret-7") && shown.contains("<redacted>"));
+    }
+
+    #[test]
+    fn pretrusting_ports_is_off_unless_asked_for() {
+        let flag = |extra: &str| load(&format!("{}\n{extra}", full_env())).map(|c| c.pretrust_ports);
+        assert_eq!(flag(""), Ok(false));
+        assert_eq!(flag("PRETRUST_PORTS="), Ok(false));
+        assert_eq!(flag("PRETRUST_PORTS=0"), Ok(false));
+        assert_eq!(flag("PRETRUST_PORTS=1"), Ok(true));
+        assert_eq!(flag("PRETRUST_PORTS=Yes"), Ok(true));
+        assert!(matches!(flag("PRETRUST_PORTS=sure"), Err(ConfigError::Invalid { key: "PRETRUST_PORTS", .. })));
+        let config = load(&format!("{}\nCLAUDE_CONFIG_JSON=/mnt/c/Users/me/.claude.json", full_env())).expect("loads");
+        assert_eq!(config.claude_config_json, Some(PathBuf::from("/mnt/c/Users/me/.claude.json")));
     }
 
     #[test]

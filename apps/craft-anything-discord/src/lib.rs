@@ -1,6 +1,7 @@
 //! The Discord porter bot's library: no Discord types, so every part is unit-testable. Most of it
-//! is pure; [`intake`], [`identify`], [`run`], [`review`], [`plane`] and [`repo`] also hold the
-//! blocking I/O (the download, the CLI calls, the rebuild child, Plane's API, `gh` and `git`).
+//! is pure; [`intake`], [`identify`], [`run`], [`review`], [`plane`], [`repo`] and [`pretrust`] also
+//! hold the blocking I/O (the download, the CLI calls, the rebuild child, Plane's API, `gh` and
+//! `git`, Claude Code's config).
 //! The Discord side (serenity) is in the binary's `discord` module.
 //!
 //! - [`config`]: the env file and its required keys (`CRAFT_DISCORD_ENV`, default `~/.config/craft-discord/.env`).
@@ -25,6 +26,7 @@
 //! - [`review`]: a tester's Pass or Fail, recorded through the engine, and the note left for the builder.
 //! - [`plane`]: the optional Plane sync (a project per port, a work item per feature, bugs).
 //! - [`repo`]: the optional GitHub repo per port (`gh`, git over SSH, the `.gitignore`).
+//! - [`pretrust`]: the optional trust of a port's project folder in Claude Code's config before a herdr build (`PRETRUST_PORTS`).
 //! - [`text`]: clipping text to Discord's limits.
 
 pub mod activity;
@@ -41,6 +43,7 @@ pub mod intake;
 pub mod jobs;
 pub mod log;
 pub mod plane;
+pub mod pretrust;
 pub mod queue;
 pub mod repo;
 pub mod review;

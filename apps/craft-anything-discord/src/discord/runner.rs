@@ -11,12 +11,14 @@ use super::card;
 use super::scheduler::{self, Job};
 use super::sync::SyncJob;
 use chrono::Utc;
+use craft_anything_ai::cli_agents::herdr::paths::Host;
 use craft_anything_discord::board::Board;
 use craft_anything_discord::coalesce::{Coalescer, EDIT_INTERVAL, MESSAGE_LIMIT, pack_lines};
 use craft_anything_discord::cost::Usage;
 use craft_anything_discord::events::{Event, Line, parse_line};
 use craft_anything_discord::jobs::{JobKind, JobStatus};
 use craft_anything_discord::log::log_line;
+use craft_anything_discord::pretrust::{self, Granted};
 use craft_anything_discord::run::{self, ChildEnd, Finished, How, Verdict};
 use craft_anything_discord::text::clip;
 use craft_anything_evidence::ToolError;
@@ -156,6 +158,7 @@ async fn run_one(http: &Http, bot: &Bot, job: &Job) {
         live.state.board.get_or_insert_with(Board::new).restart();
         live.save(&job.port);
     }
+    pretrust(http, bot, job).await;
     let project_exists = craft_anything_ai::rebuild::project::has_project(&job.port.project);
     let how = How::choose(job.kind == JobKind::Resume, project_exists);
     let request = job.target.request(&job.label);
@@ -210,6 +213,35 @@ async fn run_one(http: &Http, bot: &Bot, job: &Job) {
         scheduler::say(http, job.port.channel, "⏹️ Stopped. /resume carries on from where it stopped; /retry runs the request again.").await;
     } else {
         post_verdict(http, bot, job, &verdict).await;
+    }
+}
+
+/// With `PRETRUST_PORTS` on and a herdr build, trusts the port's project folder in Claude Code's
+/// config first ([`pretrust`]), and says so in the Log thread. A failure is said there too and the
+/// build goes on: Claude Code then asks in the pane and the run stops as it would have.
+async fn pretrust(http: &Http, bot: &Bot, job: &Job) {
+    let config = &bot.config;
+    if !config.pretrust_ports || !pretrust::uses_herdr(config.backend.as_deref()) {
+        return;
+    }
+    let (root, dir, explicit, backend) = (config.ports_root.clone(), job.port.dir.clone(), config.claude_config_json.clone(), config.backend.clone());
+    let done = tokio::task::spawn_blocking(move || {
+        pretrust::maybe_pretrust(true, backend.as_deref(), &root, &dir, explicit.as_deref(), &Host::current()).map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("the work stopped unexpectedly: {e}")));
+    let line = match done {
+        Ok(Some((folder, Granted::Added))) => format!("🔓 Trusted {folder} for Claude Code (PRETRUST_PORTS), so its trust question doesn't stop the build."),
+        Ok(Some((folder, Granted::AlreadyTrusted))) => {
+            log::debug!("{folder} was already trusted in Claude Code's config");
+            return;
+        }
+        Ok(None) => return,
+        Err(e) => format!("⚠️ Couldn't trust the project folder for Claude Code (PRETRUST_PORTS): {e}"),
+    };
+    log::info!("{}: {line}", job.port.slug);
+    if let Err(e) = job.port.thread.say(http, clip(&line, MESSAGE_LIMIT)).await {
+        log::warn!("couldn't post to the Log thread of {}: {e}", job.port.channel);
     }
 }
 
