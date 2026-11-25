@@ -35,25 +35,34 @@ pub enum ConfigError {
     NoHome,
 }
 
-/// The bot token. Its `Debug` output is redacted, so a `Config` can be logged safely.
+/// A secret value (the bot token, a Plane API key). Its `Debug` output is redacted, so a `Config` can be logged safely.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Token(String);
+pub struct Secret(String);
 
-impl Token {
+impl Secret {
     pub fn expose(&self) -> &str {
         &self.0
     }
 }
 
-impl fmt::Debug for Token {
+impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Token(<redacted>)")
+        f.write_str("Secret(<redacted>)")
     }
+}
+
+/// Plane sync settings. Present only when all three `PLANE_*` keys are set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlaneSettings {
+    /// The Plane instance root with no trailing slash, such as `http://localhost:8080`.
+    pub url: String,
+    pub api_key: Secret,
+    pub workspace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    pub token: Token,
+    pub token: Secret,
     pub app_id: u64,
     pub guild_id: u64,
     pub ports_category_id: u64,
@@ -63,6 +72,10 @@ pub struct Config {
     pub ports_root: PathBuf,
     pub craft_cli: PathBuf,
     pub max_upload_bytes: u64,
+    /// Optional Plane sync: on only when `PLANE_URL`, `PLANE_API_KEY` and `PLANE_WORKSPACE` are all set.
+    pub plane: Option<PlaneSettings>,
+    /// Optional GitHub repo per port, owned by this user or organisation. On only when `GITHUB_OWNER` is set.
+    pub github_owner: Option<String>,
 }
 
 /// Where the env file is: the `CRAFT_DISCORD_ENV` override, else `<home>/.config/craft-discord/.env`.
@@ -110,7 +123,7 @@ impl Config {
             required(map, key)?;
         }
         Ok(Config {
-            token: Token(required(map, "DISCORD_TOKEN")?.to_owned()),
+            token: Secret(required(map, "DISCORD_TOKEN")?.to_owned()),
             app_id: snowflake(map, "DISCORD_APP_ID")?,
             guild_id: snowflake(map, "DISCORD_GUILD_ID")?,
             ports_category_id: snowflake(map, "PORTS_CATEGORY_ID")?,
@@ -120,12 +133,49 @@ impl Config {
             ports_root: PathBuf::from(required(map, "PORTS_ROOT")?),
             craft_cli: PathBuf::from(required(map, "CRAFT_CLI")?),
             max_upload_bytes: max_upload_bytes(map)?,
+            plane: plane_settings(map)?,
+            github_owner: github_owner(map)?,
         })
     }
 }
 
 fn required<'a>(map: &'a BTreeMap<String, String>, key: &'static str) -> Result<&'a str, ConfigError> {
     map.get(key).map(|v| v.trim()).filter(|v| !v.is_empty()).ok_or(ConfigError::Missing { key })
+}
+
+fn optional<'a>(map: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
+    map.get(key).map(|v| v.trim()).filter(|v| !v.is_empty())
+}
+
+const PLANE_KEYS: [&str; 3] = ["PLANE_URL", "PLANE_API_KEY", "PLANE_WORKSPACE"];
+
+/// Plane is off when none of its keys is set. Once any is set, the others are required, so a
+/// half-configured Plane is an error that names the missing key rather than a silent skip.
+fn plane_settings(map: &BTreeMap<String, String>) -> Result<Option<PlaneSettings>, ConfigError> {
+    if PLANE_KEYS.iter().all(|key| optional(map, key).is_none()) {
+        return Ok(None);
+    }
+    let url = required(map, "PLANE_URL")?;
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(ConfigError::Invalid { key: "PLANE_URL", reason: "expected an http:// or https:// URL".to_owned() });
+    }
+    Ok(Some(PlaneSettings {
+        url: url.trim_end_matches('/').to_owned(),
+        api_key: Secret(required(map, "PLANE_API_KEY")?.to_owned()),
+        workspace: required(map, "PLANE_WORKSPACE")?.to_owned(),
+    }))
+}
+
+/// GitHub owner names: 1 to 39 letters, digits or hyphens, not starting or ending with a hyphen.
+fn github_owner(map: &BTreeMap<String, String>) -> Result<Option<String>, ConfigError> {
+    let Some(owner) = optional(map, "GITHUB_OWNER") else {
+        return Ok(None);
+    };
+    let valid = owner.len() <= 39 && !owner.starts_with('-') && !owner.ends_with('-') && owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if valid {
+        return Ok(Some(owner.to_owned()));
+    }
+    Err(ConfigError::Invalid { key: "GITHUB_OWNER", reason: "expected a GitHub user or organisation name".to_owned() })
 }
 
 fn snowflake(map: &BTreeMap<String, String>, key: &'static str) -> Result<u64, ConfigError> {
@@ -208,5 +258,52 @@ mod tests {
         let text = format!("{}\nMAX_UPLOAD_MB=50", full_env());
         let config = parse_env(&text).and_then(|m| Config::from_map(&m));
         assert!(config.is_ok_and(|c| c.max_upload_bytes == 50 * BYTES_PER_MB));
+    }
+
+    fn load(text: &str) -> Result<Config, ConfigError> {
+        parse_env(text).and_then(|m| Config::from_map(&m))
+    }
+
+    #[test]
+    fn plane_and_github_are_off_when_their_keys_are_absent() {
+        let config = load(&full_env()).expect("the required keys load");
+        assert_eq!((config.plane, config.github_owner), (None, None));
+    }
+
+    #[test]
+    fn a_full_plane_block_loads_with_a_trimmed_url() {
+        let text = format!("{}\nPLANE_URL=http://localhost:8080/\nPLANE_API_KEY=plane-key\nPLANE_WORKSPACE=craft", full_env());
+        let plane = load(&text).expect("the Plane keys load").plane.expect("Plane is on");
+        assert_eq!((plane.url.as_str(), plane.workspace.as_str(), plane.api_key.expose()), ("http://localhost:8080", "craft", "plane-key"));
+    }
+
+    #[test]
+    fn a_half_configured_plane_names_the_missing_key() {
+        let text = format!("{}\nPLANE_URL=http://localhost:8080\nPLANE_WORKSPACE=craft", full_env());
+        assert_eq!(load(&text), Err(ConfigError::Missing { key: "PLANE_API_KEY" }));
+    }
+
+    #[test]
+    fn a_plane_url_without_a_scheme_is_refused() {
+        let text = format!("{}\nPLANE_URL=localhost:8080\nPLANE_API_KEY=k\nPLANE_WORKSPACE=craft", full_env());
+        assert!(matches!(load(&text), Err(ConfigError::Invalid { key: "PLANE_URL", .. })));
+    }
+
+    #[test]
+    fn the_plane_key_never_appears_in_debug_output() {
+        let text = format!("{}\nPLANE_URL=http://localhost:8080\nPLANE_API_KEY=plane-secret-7\nPLANE_WORKSPACE=craft", full_env());
+        let shown = format!("{:?}", load(&text).expect("loads"));
+        assert!(!shown.contains("plane-secret-7") && shown.contains("<redacted>"));
+    }
+
+    #[test]
+    fn a_github_owner_is_checked_against_github_name_rules() {
+        let good = format!("{}\nGITHUB_OWNER=tranvietanh0", full_env());
+        assert_eq!(load(&good).expect("loads").github_owner.as_deref(), Some("tranvietanh0"));
+        let too_long = "a".repeat(40);
+        for bad in ["bad owner!", "-leading", "trailing-", too_long.as_str()] {
+            let text = format!("{}\nGITHUB_OWNER={bad}", full_env());
+            assert!(matches!(load(&text), Err(ConfigError::Invalid { key: "GITHUB_OWNER", .. })), "{bad}");
+        }
     }
 }
