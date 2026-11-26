@@ -135,6 +135,45 @@ to 1000 characters) and "Steps to reproduce" (optional). Sending it records the 
 
 If the verdict can't be recorded, the card opens again and the tester is told why.
 
+When the guide links pictures (`![…](path)`, a path from the guide's folder or the project folder),
+up to nine of them that are files inside the project are attached to the card, and the first is
+shown in it. That is the only link craft has between a feature and a screenshot: its feature
+records carry none, so a card whose guide links no picture has none.
+
+## Screenshots
+
+Testers see what the rebuilt app looks like: after each check, the bot posts the pictures the
+checks made in the port's channel. This works the same for `/port` runs and for
+[projects made in the desktop app](#projects-made-in-the-desktop-app): a `checked` or `finished`
+event of either looks for new pictures.
+
+**Where they come from.** Craft's checks write them in the project folder under
+`checks/round-<n>/`, and list them in `craft.json` as that check's `artifacts`:
+
+| File | Made by |
+|---|---|
+| `checks/round-<n>/screenshot.png` | The app check (`app-screenshot`): the program started with `--screenshot <file>`, as the brief asks every app and game to support. |
+| `checks/round-<n>/window.png` | The same check, when the original was pictured running: the build started normally and pictured the same way. |
+| `checks/round-<n>/screenshot-<width>.png`, `routes/<page>/…` | The website check: the build at each width, and its other pages. |
+
+Round 0 is the builder's own check (`rebuild_check` during its turn); it writes the same files
+again each time it runs. Pictures (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`) up to three folders
+deep in each round's folder are posted.
+
+**What is posted.** Up to ten pictures to a message, each listed with a caption: the round (the
+round of the check that lists it in `craft.json`, else its folder's; round 0 is "Builder's own
+check"), what it shows (`app screen`, `app started normally`, `about · 390 px wide`, or the file's
+name) and the check's verdict ("✅ app-screenshot passed", "❌ … failed", or "no verdict yet" when no
+check lists it). The caption is also the attachment's description. A file over 8 MB (under
+Discord's 10 MB upload limit) is scaled down, as a PNG, until it fits, and its caption says so; one
+that still doesn't fit, or can't be read, is not posted and the channel gets a line saying why.
+
+**Never twice.** Each picture is recorded by its path and modification time in
+`PORTS_ROOT/.bot/screenshots.json` (written atomically) once its message went out, so a restart
+posts nothing again, and a picture written again (round 0) is posted again as a new one. A message
+that fails to send is not recorded and is tried again at the next check. A `screenshots.json` that
+can't be read stops the posting, with an error in the log, instead of posting every picture again.
+
 ## Projects made in the desktop app
 
 `/port` builds are not the only ones the bot can show. With `MIRROR_APP_PROJECTS=1`, a project made
@@ -177,10 +216,18 @@ ready or paused (a new request in the app), the board starts a new run.
 
 **The first look.** The channel's first report is a light look at what is being rebuilt, made from
 what craft's study already wrote (no extra AI call): the target and its kind, the stack, the
-builder and the request; the pictures of the original in `capture/` and `reference/`, by name, as
-the screens and pages it saw; the sections of the study's notes (`capture/*.md`); and the features
-and flows the builder reported so far. Later progress shows on the board, in the Log thread and as
-tester cards.
+builder and the request; the pictures of the original in `capture/` and `reference/` (up to three
+folders deep), as "Original screens": listed by name, with the first ten attached to the message
+as its gallery (each within the [size limit](#screenshots)); the sections of the study's notes
+(`capture/*.md`); and the features and flows the builder reported so far. Later progress shows on
+the board, in the Log thread, as [screenshots](#screenshots) and as tester cards.
+
+Pictures of the original come from the person (`reference/`), from a website's capture
+(`capture/`), or, for a desktop program in Deep mode with runtime study on, from starting it once
+(`capture/window.png`). Craft never starts an Android app: its study reads the package, and an APK
+can't run on the machine. So an Android target's first look has none and says "no screenshots of
+the original (needs a device)". Picturing one would need adb and an emulator or a phone with the
+app installed: the engine has the tool (`adb_screenshot_take`), but the study doesn't use it.
 
 **In a mirrored channel.** `/status` works (its queue line says the build is in the desktop app),
 and so does `/note` (the note goes to the project's `inbox/notes/`, as for a port). `/stop`,
@@ -210,7 +257,7 @@ export CRAFT_DISCORD_REGISTER=/home/<you>/ports/.bot/register
    no privileged intents: it uses only the `GUILDS` intent.
 3. Under **OAuth2 → URL Generator**, pick the scopes `bot` and `applications.commands`, and these
    bot permissions: View Channels, Manage Channels, Send Messages, Embed Links, Attach Files (the
-   tester guide), Read Message History, Manage Messages (to pin), Create Public Threads and Send
+   tester guide and the screenshots), Read Message History, Manage Messages (to pin), Create Public Threads and Send
    Messages in Threads. Open the URL to add the bot to the server.
 4. In the server, turn on Developer Mode (User Settings → Advanced) to copy IDs. Create (or pick)
    a category for ports, a porter role and a tester role. The tester mention needs the role to be
