@@ -27,6 +27,8 @@
 //! - [`plane`]: the optional Plane sync (a project per port, a work item per feature, bugs).
 //! - [`repo`]: the optional GitHub repo per port (`gh`, git over SSH, the `.gitignore`).
 //! - [`pretrust`]: the optional trust of a port's project folder in Claude Code's config before a herdr build (`PRETRUST_PORTS`).
+//! - [`mirror`]: projects made in the craft desktop app, registered on creation and mirrored by polling their files into the same events.
+//! - [`first_look`]: a mirrored project's first report, from what the study wrote.
 //! - [`text`]: clipping text to Discord's limits.
 
 pub mod activity;
@@ -37,11 +39,13 @@ pub mod control;
 pub mod cost;
 pub mod daily;
 pub mod events;
+pub mod first_look;
 pub mod guide;
 pub mod identify;
 pub mod intake;
 pub mod jobs;
 pub mod log;
+pub mod mirror;
 pub mod plane;
 pub mod pretrust;
 pub mod queue;

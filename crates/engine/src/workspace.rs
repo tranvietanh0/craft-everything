@@ -31,6 +31,7 @@ use std::sync::PoisonError;
 
 pub mod features;
 pub mod progress;
+pub mod register;
 
 pub const MANIFEST: &str = "craft.json";
 
@@ -777,6 +778,7 @@ impl Workspace {
         }
         let ws = Workspace { root, manifest: Manifest::new(name, request, target) };
         ws.save()?;
+        register::announce(&ws);
         Ok(ws)
     }
 
@@ -890,6 +892,7 @@ impl Workspace {
         }
         let ws = Workspace { root: folder.to_path_buf(), manifest };
         ws.save()?;
+        register::announce(&ws);
         Ok(ws)
     }
 

@@ -11,6 +11,9 @@ pub const ENV_FILE_VAR: &str = "CRAFT_DISCORD_ENV";
 /// Default upload cap for an APK or XAPK, when `MAX_UPLOAD_MB` is not set.
 pub const DEFAULT_MAX_UPLOAD_MB: u64 = 200;
 const BYTES_PER_MB: u64 = 1024 * 1024;
+/// How often a mirrored app project's files are looked at, when `MIRROR_POLL_SECS` is not set.
+pub const DEFAULT_MIRROR_POLL_SECS: u64 = 5;
+const MAX_MIRROR_POLL_SECS: u64 = 3_600;
 
 const REQUIRED_KEYS: [&str; 9] = [
     "DISCORD_TOKEN",
@@ -89,6 +92,13 @@ pub struct Config {
     /// `CLAUDE_CONFIG_JSON`: Claude Code's `.claude.json` for `PRETRUST_PORTS`, when it isn't in the
     /// home folder herdr runs Claude Code under.
     pub claude_config_json: Option<PathBuf>,
+    /// `MIRROR_APP_PROJECTS`: mirror projects the craft desktop app (or CLI) registers when it
+    /// creates them ([`crate::mirror`]). Off unless set to `1`.
+    pub mirror_apps: bool,
+    /// `MIRROR_REGISTER_DIR`: where craft writes the registrations; default `PORTS_ROOT/.bot/register`.
+    pub mirror_register_dir: Option<PathBuf>,
+    /// `MIRROR_POLL_SECS`: how often the register folder and each mirrored project are looked at.
+    pub mirror_poll: std::time::Duration,
 }
 
 /// Where the env file is: the `CRAFT_DISCORD_ENV` override, else `<home>/.config/craft-discord/.env`.
@@ -153,6 +163,9 @@ impl Config {
                 .map_err(|(key, reason)| ConfigError::Invalid { key, reason })?,
             pretrust_ports: flag(map, "PRETRUST_PORTS")?,
             claude_config_json: optional(map, "CLAUDE_CONFIG_JSON").map(PathBuf::from),
+            mirror_apps: flag(map, "MIRROR_APP_PROJECTS")?,
+            mirror_register_dir: optional(map, "MIRROR_REGISTER_DIR").map(PathBuf::from),
+            mirror_poll: mirror_poll(map)?,
         })
     }
 }
@@ -219,6 +232,18 @@ fn github_owner(map: &BTreeMap<String, String>) -> Result<Option<String>, Config
 
 fn snowflake(map: &BTreeMap<String, String>, key: &'static str) -> Result<u64, ConfigError> {
     required(map, key)?.parse::<u64>().ok().filter(|id| *id > 0).ok_or_else(|| ConfigError::Invalid { key, reason: "expected a numeric Discord ID".to_owned() })
+}
+
+fn mirror_poll(map: &BTreeMap<String, String>) -> Result<std::time::Duration, ConfigError> {
+    const KEY: &str = "MIRROR_POLL_SECS";
+    let Some(raw) = optional(map, KEY) else {
+        return Ok(std::time::Duration::from_secs(DEFAULT_MIRROR_POLL_SECS));
+    };
+    raw.parse::<u64>()
+        .ok()
+        .filter(|s| (1..=MAX_MIRROR_POLL_SECS).contains(s))
+        .map(std::time::Duration::from_secs)
+        .ok_or_else(|| ConfigError::Invalid { key: KEY, reason: format!("expected whole seconds from 1 to {MAX_MIRROR_POLL_SECS}") })
 }
 
 fn max_upload_bytes(map: &BTreeMap<String, String>) -> Result<u64, ConfigError> {
@@ -369,6 +394,22 @@ mod tests {
         assert!(matches!(flag("PRETRUST_PORTS=sure"), Err(ConfigError::Invalid { key: "PRETRUST_PORTS", .. })));
         let config = load(&format!("{}\nCLAUDE_CONFIG_JSON=/mnt/c/Users/me/.claude.json", full_env())).expect("loads");
         assert_eq!(config.claude_config_json, Some(PathBuf::from("/mnt/c/Users/me/.claude.json")));
+    }
+
+    #[test]
+    fn mirroring_app_projects_is_off_unless_asked_for_and_polls_every_five_seconds() {
+        let config = load(&full_env()).expect("loads");
+        assert_eq!((config.mirror_apps, config.mirror_register_dir, config.mirror_poll.as_secs()), (false, None, DEFAULT_MIRROR_POLL_SECS));
+        let on = load(&format!("{}
+MIRROR_APP_PROJECTS=1
+MIRROR_REGISTER_DIR=/srv/reg
+MIRROR_POLL_SECS=2", full_env())).expect("loads");
+        assert_eq!((on.mirror_apps, on.mirror_register_dir, on.mirror_poll.as_secs()), (true, Some(PathBuf::from("/srv/reg")), 2));
+        for bad in ["0", "abc", "3601"] {
+            let text = format!("{}
+MIRROR_POLL_SECS={bad}", full_env());
+            assert!(matches!(load(&text), Err(ConfigError::Invalid { key: "MIRROR_POLL_SECS", .. })), "{bad}");
+        }
     }
 
     #[test]

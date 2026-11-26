@@ -1,5 +1,5 @@
 //! The Discord side: sign in, register the commands in the guild, hand each `/port` to [`port`],
-//! each control command to [`commands`] and each tester-card press to [`card`]. On the first
+//! each control command to [`commands`] and each tester-card press to [`card`], and mirrors projects the craft desktop app registers ([`mirror`]). On the first
 //! sign-in the saved queue is restored ([`scheduler::recover`]) and the daily summary starts
 //! ([`summary`]). Only the `GUILDS` intent is asked for: slash commands, buttons and forms arrive
 //! as interactions.
@@ -9,6 +9,7 @@ mod command;
 mod commands;
 mod embeds;
 mod live;
+mod mirror;
 mod port;
 mod runner;
 mod scheduler;
@@ -86,6 +87,9 @@ impl EventHandler for Handler {
                 tokio::spawn(async move { scheduler::recover(&http, &bot, recovery).await });
             }
             tokio::spawn(summary::run(Arc::clone(&ctx.http), Arc::clone(&self.bot)));
+            if self.bot.config.mirror_apps {
+                tokio::spawn(mirror::run(Arc::clone(&ctx.http), Arc::clone(&self.bot)));
+            }
         }
     }
 

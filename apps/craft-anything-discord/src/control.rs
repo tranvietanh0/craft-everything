@@ -18,6 +18,8 @@ pub enum Place {
     /// 1 is next in line.
     Waiting(usize),
     NotQueued,
+    /// A project mirrored from the craft desktop app: it builds there, not in the bot's queue.
+    App,
 }
 
 impl Place {
@@ -26,6 +28,7 @@ impl Place {
             Place::Running => "running now".to_owned(),
             Place::Waiting(n) => format!("waiting, position {n}"),
             Place::NotQueued => "not in the queue".to_owned(),
+            Place::App => "built in the craft desktop app (from app)".to_owned(),
         }
     }
 }
@@ -95,6 +98,17 @@ pub fn stoppable(state: &PortState) -> Result<&JobRecord, String> {
     state.last_job().filter(|j| j.status.is_active()).ok_or_else(|| "Nothing is running or waiting for this port.".to_owned())
 }
 
+/// The commands that control a run; a project mirrored from the desktop app is run from there.
+pub const RUN_COMMANDS: [&str; 3] = ["stop", "resume", "retry"];
+
+/// The answer to `command` in a mirrored project's channel when the bot can't do it: the build is
+/// the desktop app's. `None` for the commands that work there (`/status`, `/note`).
+pub fn app_owned_answer(command: &str) -> Option<String> {
+    RUN_COMMANDS.contains(&command).then(|| {
+        format!("This build belongs to the craft desktop app, so /{command} can't control it: stop, resume or retry it in the app. /status and /note work here.")
+    })
+}
+
 /// The note a porter leaves the builder with `/note`.
 pub fn porter_note(porter: &str, text: &str) -> String {
     format!("A porter ({porter}) left you a note:\n{}", text.trim())
@@ -143,6 +157,17 @@ mod tests {
         assert!(retryable(&port_with(Some(JobStatus::Queued))).is_err());
         assert!(stoppable(&port_with(Some(JobStatus::Running))).is_ok());
         assert!(stoppable(&port_with(Some(JobStatus::Failed))).is_err());
+    }
+
+    #[test]
+    fn a_mirrored_project_refuses_run_control_but_not_status_or_notes() {
+        for command in ["stop", "resume", "retry"] {
+            assert!(app_owned_answer(command).is_some_and(|a| a.contains("desktop app") && a.contains(command)), "{command}");
+        }
+        assert_eq!(app_owned_answer("status"), None);
+        assert_eq!(app_owned_answer("note"), None);
+        let text = status_text(&port_with(Some(JobStatus::Running)), Place::App, Duration::ZERO);
+        assert!(text.contains("desktop app"), "{text}");
     }
 
     #[test]

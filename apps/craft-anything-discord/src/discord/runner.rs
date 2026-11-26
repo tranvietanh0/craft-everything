@@ -8,6 +8,7 @@
 
 use super::Bot;
 use super::card;
+use super::live::Port;
 use super::scheduler::{self, Job};
 use super::sync::SyncJob;
 use chrono::Utc;
@@ -92,26 +93,11 @@ impl Progress {
         if let Event::Finished { ok, paused, message } = event {
             self.finished = Some(Finished { ok: *ok, paused: *paused, message: message.clone() });
         }
-        {
-            let mut live = job.port.live.lock().await;
-            live.state.board.get_or_insert_with(Board::new).apply(event);
-            if let Event::TurnDone { input_tokens, output_tokens, tokens_unknown, cost_usd, cost_is_estimate, .. } = event {
-                let mut turn = Usage::default();
-                turn.add_turn(*input_tokens, *output_tokens, *tokens_unknown, *cost_usd, *cost_is_estimate);
-                live.state.add_usage(job.id, &turn, Utc::now());
-                live.save(&job.port);
-            }
-        }
+        fold(http, bot, &job.port, job.id, event).await;
         self.board_gate.mark();
-        match event {
-            Event::Feature { name, state, guide, similarity, .. } => {
-                card::on_feature(http, bot, &job.port, name, state, guide.as_deref(), *similarity).await;
-            }
-            Event::Checked { round, check, passed, .. } => {
-                let verdict = if *passed { "passed" } else { "failed" };
-                job.port.queue(SyncJob::Commit { message: format!("Check round {round}: {check} {verdict}") });
-            }
-            _ => {}
+        if let Event::Checked { round, check, passed, .. } = event {
+            let verdict = if *passed { "passed" } else { "failed" };
+            job.port.queue(SyncJob::Commit { message: format!("Check round {round}: {check} {verdict}") });
         }
     }
 
@@ -139,6 +125,25 @@ impl Progress {
             self.board_gate.sent(now);
             self.refreshed = now;
         }
+    }
+}
+
+/// Folds one event into a port: its board, the usage of its job `job_id`, and, for a `feature`
+/// event, the tester cards and Plane ([`card::on_feature`]). A run's events and a mirrored app
+/// project's ([`super::mirror`]) both go through here.
+pub async fn fold(http: &Http, bot: &Bot, port: &Port, job_id: u64, event: &Event) {
+    {
+        let mut live = port.live.lock().await;
+        live.state.board.get_or_insert_with(Board::new).apply(event);
+        if let Event::TurnDone { input_tokens, output_tokens, tokens_unknown, cost_usd, cost_is_estimate, .. } = event {
+            let mut turn = Usage::default();
+            turn.add_turn(*input_tokens, *output_tokens, *tokens_unknown, *cost_usd, *cost_is_estimate);
+            live.state.add_usage(job_id, &turn, Utc::now());
+            live.save(port);
+        }
+    }
+    if let Event::Feature { name, state, guide, similarity, .. } = event {
+        card::on_feature(http, bot, port, name, state, guide.as_deref(), *similarity).await;
     }
 }
 
