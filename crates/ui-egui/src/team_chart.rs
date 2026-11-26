@@ -219,14 +219,7 @@ pub fn role_card(t: &Tokens, role: &Role, nodes: &[AgentNode], file: &str) -> Ca
         Some(node) => (state_look(&node.state, t), agent_lines(nodes)),
         None => (idle_state(t), vec![file.to_string()]),
     };
-    CardView {
-        card: Card::Role(role.id.clone()),
-        title: role.name.clone(),
-        tag: role.id.clone(),
-        state,
-        lines,
-        live: nodes.iter().any(|n| n.state.is_live()),
-    }
+    CardView { card: Card::Role(role.id.clone()), title: role.name.clone(), tag: role.id.clone(), state, lines, live: nodes.iter().any(|n| n.state.is_live()) }
 }
 
 /// The card for subagents that aren't a role.

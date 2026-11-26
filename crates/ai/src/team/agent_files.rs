@@ -145,11 +145,7 @@ pub fn render(role: &Role) -> String {
 /// What the builder is told about its team: which subagents it has and to hand work to them with
 /// the `Agent` tool. Only the roles in `available` are listed.
 pub fn preamble(roster: &[Role], available: &[String]) -> String {
-    let roles: Vec<String> = roster
-        .iter()
-        .filter(|r| available.contains(&r.id))
-        .map(|r| format!("- {} ({}): {}", r.id, r.name, r.description))
-        .collect();
+    let roles: Vec<String> = roster.iter().filter(|r| available.contains(&r.id)).map(|r| format!("- {} ({}): {}", r.id, r.name, r.description)).collect();
     if roles.is_empty() {
         return String::new();
     }

@@ -925,11 +925,8 @@ impl Worker {
         let remote = entry.config.ssh_host.as_deref().is_some_and(|h| !h.trim().is_empty());
         // A team that can't be written is said, and the builder works without one.
         let team = team_for_builder(ws, deep, claude_builds(opts, entry), remote).unwrap_or_else(|e| {
-            let text = format!(
-                "The porting team couldn't be written to {}: {}. The builder works without it.",
-                crate::team::agent_files::AGENTS_DIR,
-                e.message
-            );
+            let text =
+                format!("The porting team couldn't be written to {}: {}. The builder works without it.", crate::team::agent_files::AGENTS_DIR, e.message);
             self.emit(RunEvent::Agent(AgentEvent::Status { text }));
             String::new()
         });

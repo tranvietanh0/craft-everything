@@ -248,7 +248,9 @@ fn form(ui: &mut Ui, t: &Tokens, ed: &mut TeamEditor, saving: bool, action: &mut
         name.request_focus();
     }
     line_field(ui, t, "Id", "lower-case-with-hyphens", &mut d.id);
-    ui.label(RichText::new(tr("The subagent's name. The builder starts the role by it, and the Team tab matches it.")).color(t.text_faint).size(theme::CAPTION));
+    ui.label(
+        RichText::new(tr("The subagent's name. The builder starts the role by it, and the Team tab matches it.")).color(t.text_faint).size(theme::CAPTION),
+    );
     text_field(ui, t, "When to use it", 2, false, &mut d.description);
     text_field(ui, t, "Instructions", 8, true, &mut d.prompt);
     line_field(ui, t, "Model", "Empty: the builder's own (or sonnet, opus, haiku, inherit)", &mut d.model);
@@ -330,7 +332,9 @@ fn skills(ui: &mut Ui, t: &Tokens, d: &mut Draft, known: &[String], text: &mut S
         if let Some(Some(k)) = pick.inner {
             d.skills.push(k);
         }
-        let r = ui.add(egui::TextEdit::singleline(text).hint_text(tr("Another skill's folder name")).desired_width(180.0).frame(widgets::text_field_frame_compact(t)));
+        let r = ui.add(
+            egui::TextEdit::singleline(text).hint_text(tr("Another skill's folder name")).desired_width(180.0).frame(widgets::text_field_frame_compact(t)),
+        );
         widgets::named(r, "Another skill's folder name");
         let name = text.trim().to_string();
         let ok = !name.is_empty() && !d.skills.contains(&name);
@@ -366,7 +370,12 @@ fn hooks(ui: &mut Ui, t: &Tokens, d: &mut Draft) {
                 }
             });
             widgets::named(event.response, &trf("Hook {n} event", &[("n", &(i + 1).to_string())]));
-            let m = ui.add(egui::TextEdit::singleline(&mut hook.matcher).hint_text(tr("Tools: Bash, Edit|Write")).desired_width(130.0).frame(widgets::text_field_frame_compact(t)));
+            let m = ui.add(
+                egui::TextEdit::singleline(&mut hook.matcher)
+                    .hint_text(tr("Tools: Bash, Edit|Write"))
+                    .desired_width(130.0)
+                    .frame(widgets::text_field_frame_compact(t)),
+            );
             widgets::named(m, &trf("Hook {n} tools", &[("n", &(i + 1).to_string())]));
             let c = ui.add(
                 egui::TextEdit::singleline(&mut hook.command)
