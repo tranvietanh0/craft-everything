@@ -94,6 +94,11 @@ impl TeamPanel {
         }
     }
 
+    /// Open the team editor on `roles` (the "Edit team" button).
+    pub fn edit(&mut self, roles: &[Role]) {
+        self.editor = Some(TeamEditor::new(roles, skill_names(&self.root)));
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -210,7 +215,7 @@ pub fn show(panel: &mut TeamPanel, ui: &mut Ui, roster: &Roster) -> Option<TeamA
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::secondary(ui, Some("settings"), "Edit team").clicked() {
-                    panel.editor = Some(TeamEditor::new(roster.roles, skill_names(&panel.root)));
+                    panel.edit(roster.roles);
                 }
             });
         });

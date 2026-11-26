@@ -509,6 +509,24 @@ fn main() {
             a
         });
     }
+    // The Team tab in Deep mode (the standard team as an org chart), then with its editor open.
+    for (scene, editing) in [("project-team", false), ("project-team-editor", true)] {
+        if want(scene) {
+            render(&out, scene, w, h, scale, move || {
+                let mut a = demo::app(demo::engine(Mode::Beginner, true));
+                demo::deep(&mut a);
+                demo::fill_project(&mut a);
+                if let Some(ws) = a.workspace.clone() {
+                    let mut panel = craft_anything_ui_egui::team::TeamPanel::new(ws.root.clone());
+                    if editing {
+                        panel.edit(&ws.manifest.roster());
+                    }
+                    a.team = Some(panel);
+                }
+                a
+            });
+        }
+    }
     if want("light-project") {
         render(&out, "light-project", w, h, scale, || {
             let mut a = demo::app(demo::engine(Mode::Beginner, true));

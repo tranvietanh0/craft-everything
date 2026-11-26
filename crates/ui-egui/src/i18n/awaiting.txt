@@ -116,7 +116,7 @@ No conversation yet
 No other skill folders found
 No roles. Add one, or reset to the standard team.
 No subagent has worked as this role in this conversation yet.
-Not started in this conversation
+Not started yet
 Not written in Clean room
 Other helpers
 Remove a team role
@@ -130,7 +130,7 @@ Save a team role
 Save role
 Saving…
 Started {n} times in this conversation
-Subagent file written by Craft Anything
+Subagent file written
 Subagents that aren't a role on the team: Claude Code's own helpers, or a role renamed or removed since.
 The builder hasn't started in this project yet.
 The builder's conversation can't be read.
@@ -138,8 +138,8 @@ The standard team. Saving a change keeps the whole team in this project's craft.
 The subagent's name. The builder starts the role by it, and the Team tab matches it.
 This project's own team, kept in its craft.json.
 Tools: Bash, Edit|Write
-Written when the next Deep build with Claude Code starts
-Your own subagent file of this name is used; Craft Anything leaves it alone
+Written at the next Deep build
+Your own subagent file is used
 skills {list}
 {name} (not saved)
 {n} hook(s), run only in a folder trusted in Claude Code

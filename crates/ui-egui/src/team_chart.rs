@@ -191,7 +191,7 @@ pub fn agent_lines(nodes: &[AgentNode]) -> Vec<String> {
 
 /// "Not working as this role yet", for a role no subagent has worked as.
 fn idle_state(t: &Tokens) -> (String, &'static str, Color32) {
-    (tr("Not started in this conversation"), "minus", t.text_faint)
+    (tr("Not started yet"), "minus", t.text_faint)
 }
 
 /// The builder's card, from the conversation shown (none: not started).
@@ -243,9 +243,9 @@ pub fn file_line(clean_room: bool, files: &Result<BTreeMap<String, FileOwner>, S
     match files {
         Err(e) => trf("Can't read .claude/agents: {e}", &[("e", e)]),
         Ok(files) => match files.get(id) {
-            Some(FileOwner::Craft) => tr("Subagent file written by Craft Anything"),
-            Some(FileOwner::Person) => tr("Your own subagent file of this name is used; Craft Anything leaves it alone"),
-            None => tr("Written when the next Deep build with Claude Code starts"),
+            Some(FileOwner::Craft) => tr("Subagent file written"),
+            Some(FileOwner::Person) => tr("Your own subagent file is used"),
+            None => tr("Written at the next Deep build"),
         },
     }
 }
