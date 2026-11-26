@@ -15,6 +15,7 @@ pub mod detect;
 mod failure;
 pub use craft_anything_engine::failure_log;
 pub mod http;
+mod jsonl_tail;
 pub mod key_tools;
 pub mod keys;
 pub mod model;
@@ -27,6 +28,7 @@ pub mod prompt;
 pub mod providers;
 pub mod rebuild;
 pub mod ssh;
+pub mod team;
 pub mod window;
 
 pub use agent::FULL_TOOLS_BUDGET;

@@ -40,6 +40,7 @@ pub mod settings_ui;
 pub mod sidebar;
 pub mod slash;
 pub mod state;
+pub mod team;
 pub mod theme;
 pub mod titlebar;
 pub mod usage;
@@ -540,6 +541,8 @@ pub struct CraftApp {
     pub usage: std::collections::HashMap<PathBuf, usage::ProjectClock>,
     /// All AI use since the app opened: builds and chat.
     pub session_usage: craft_anything_engine::workspace::ProjectUsage,
+    /// The Project screen's Team tab, for the project it was opened on (`None`: the feed is shown).
+    pub team: Option<team::TeamPanel>,
     /// What each project's latest run has used so far, shown beside Try again when it fails.
     last_run: std::collections::HashMap<PathBuf, usage::RunTally>,
     /// The project shown on the Project screen.
@@ -692,6 +695,7 @@ impl CraftApp {
             start_after_pictures: None,
             usage: Default::default(),
             session_usage: Default::default(),
+            team: None,
             last_run: Default::default(),
             workspace: None,
             projects: Vec::new(),

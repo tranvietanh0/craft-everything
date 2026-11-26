@@ -1,0 +1,39 @@
+# Team tab (feature/r-team-panel).
+A port the bot made ({label}, channel port-{slug}): {runs} run(s), {cards} tester card(s).	Bản port do bot tạo ({label}, kênh port-{slug}): {runs} lần chạy, {cards} thẻ kiểm thử.
+Answered: {s}	Đã trả lời: {s}
+Builder (Claude Code)	Bên dựng (Claude Code)
+Can't tell: {why}	Không xác định được: {why}
+Claude Code tools	Công cụ của Claude Code
+Conversation	Cuộc trò chuyện
+Couldn't start reading the team: {e}	Không bắt đầu đọc được nhóm: {e}
+Craft Anything (orchestrator): {n} agent(s), {live} working	Craft Anything (điều phối): {n} tác tử, {live} đang làm việc
+Craft tools	Công cụ của Craft
+Discord bot	Bot Discord
+Failed	Thất bại
+In {tool} (running, or waiting for approval in herdr)	Trong {tool} (đang chạy, hoặc chờ duyệt trong herdr)
+It shows here once a build with Claude Code starts.	Sẽ hiện ở đây khi một lần dựng bằng Claude Code bắt đầu.
+Latest: {calls}	Gần nhất: {calls}
+Looked in: {dirs}	Đã tìm trong: {dirs}
+Mirrored in port-{slug}: stage {status}, {features} feature(s) and {checks} check(s) reported, first look {look}.	Đang phản chiếu ở port-{slug}: giai đoạn {status}, đã báo {features} tính năng và {checks} lần kiểm tra, cái nhìn đầu tiên {look}.
+No activity for 5 minutes	Không có hoạt động trong 5 phút
+No builder conversation yet	Chưa có cuộc trò chuyện nào của bên dựng
+Not followed by the bot. {why}	Bot không theo dõi. {why}
+Offered to the bot ({file}); it hasn't picked it up yet.	Đã gửi cho bot ({file}); bot chưa nhận.
+Other MCP tools	Công cụ MCP khác
+Reading the builder's conversation…	Đang đọc cuộc trò chuyện của bên dựng…
+Skills	Kỹ năng
+Stopped	Đã dừng
+Subagents started	Tác tử con đã khởi chạy
+Team	Nhóm
+The bot reads this project's files and posts what changed. No agent posts to Discord.	Bot đọc các tệp của dự án này và đăng những gì thay đổi. Không tác tử nào đăng lên Discord.
+The team can't be read	Không đọc được nhóm
+Waiting for the next message	Đang chờ tin nhắn tiếp theo
+Who works on this build, and the tools each one called.	Ai đang làm bản dựng này, và các công cụ mỗi tác tử đã gọi.
+Working	Đang làm việc
+model {m}	mô hình {m}
+not posted yet	chưa đăng
+posted	đã đăng
+started {t} UTC	bắt đầu lúc {t} UTC
+{id} (latest, {m} min ago)	{id} (mới nhất, {m} phút trước)
+{id} ({m} min ago)	{id} ({m} phút trước)
+{n} tool call(s)	{n} lần gọi công cụ

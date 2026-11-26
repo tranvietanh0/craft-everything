@@ -774,7 +774,7 @@ fn find_evidence_id(text: &str) -> Option<String> {
     None
 }
 
-fn content_text(v: &Value) -> String {
+pub(crate) fn content_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Array(a) => a.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join(""),

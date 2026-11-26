@@ -932,6 +932,27 @@ pub fn show(app: &mut CraftApp, ui: &mut Ui) {
         let width = ui.available_width();
         let max_w = width.min(720.0);
         let pad = ((width - max_w) / 2.0).max(0.0);
+        // The conversation, or who works on the build (the Team tab).
+        let on_team = app.team.as_ref().is_some_and(|p| p.root() == ws.root);
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            match widgets::segmented(ui, &["Conversation", "Team"], usize::from(on_team), theme::ControlSize::Small) {
+                Some(1) => app.team = Some(crate::team::TeamPanel::new(ws.root.clone())),
+                Some(_) => app.team = None,
+                None => {}
+            }
+        });
+        ui.add_space(theme::space::SM);
+        if let Some(panel) = app.team.as_ref().filter(|p| p.root() == ws.root) {
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                ui.vertical(|ui| {
+                    ui.set_width(max_w);
+                    crate::team::show(panel, ui);
+                });
+            });
+            return;
+        }
         // The feed gets what the prompt box leaves; the box grows with its text, so its height
         // is measured each frame and used on the next.
         let comp_id = ui.id().with("project-composer-h");

@@ -7,18 +7,16 @@
 use super::super::adapters::ClaudeCode;
 use super::super::{StreamParser, content_text};
 use crate::AgentEvent;
+use crate::jsonl_tail::JsonlTail;
 use crate::model::Usage;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// One turn's reading of a transcript.
 pub struct Transcript {
-    path: PathBuf,
-    offset: u64,
-    partial: String,
+    tail: JsonlTail,
     parser: StreamParser,
     /// Usage of each model message, by message id: a message written as several entries (one per
     /// content block) repeats its usage, so it is counted once.
@@ -45,9 +43,7 @@ impl Transcript {
     /// `after_prompt`, entries count only from the user message that is that prompt.
     pub fn new(path: PathBuf, offset: u64, after_prompt: Option<&str>) -> Self {
         Transcript {
-            path,
-            offset,
-            partial: String::new(),
+            tail: JsonlTail::new(path, offset),
             parser: StreamParser::new(Arc::new(ClaudeCode::default())),
             usage: HashMap::new(),
             gate: after_prompt.map(key).filter(|k| !k.is_empty()),
@@ -63,26 +59,15 @@ impl Transcript {
     }
 
     pub fn path(&self) -> &Path {
-        &self.path
+        self.tail.path()
     }
 
     /// Events for what was written since the last read. A file not there yet is nothing new.
     pub fn read_new(&mut self) -> Vec<AgentEvent> {
-        let Ok(mut f) = std::fs::File::open(&self.path) else {
+        let Ok(lines) = self.tail.read_lines() else {
             return Vec::new();
         };
-        let mut bytes = Vec::new();
-        if f.seek(SeekFrom::Start(self.offset)).is_err() || f.read_to_end(&mut bytes).is_err() {
-            return Vec::new();
-        }
-        self.offset += bytes.len() as u64;
-        self.partial.push_str(&String::from_utf8_lossy(&bytes));
-        let mut events = Vec::new();
-        while let Some(end) = self.partial.find('\n') {
-            let line: String = self.partial.drain(..=end).collect();
-            events.extend(self.line(&line));
-        }
-        events
+        lines.iter().flat_map(|l| self.line(l)).collect()
     }
 
     /// Events for one whole transcript line.

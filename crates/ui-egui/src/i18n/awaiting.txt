@@ -56,3 +56,42 @@ Take a sound out of an Unreal game
 Hold to the floor
 Add with key
 {program} (or its path on {host})
+# Team tab (feature/r-team-panel)
+A port the bot made ({label}, channel port-{slug}): {runs} run(s), {cards} tester card(s).
+Answered: {s}
+Builder (Claude Code)
+Can't tell: {why}
+Claude Code tools
+Conversation
+Couldn't start reading the team: {e}
+Craft Anything (orchestrator): {n} agent(s), {live} working
+Craft tools
+Discord bot
+Failed
+In {tool} (running, or waiting for approval in herdr)
+It shows here once a build with Claude Code starts.
+Latest: {calls}
+Looked in: {dirs}
+Mirrored in port-{slug}: stage {status}, {features} feature(s) and {checks} check(s) reported, first look {look}.
+No activity for 5 minutes
+No builder conversation yet
+Not followed by the bot. {why}
+Offered to the bot ({file}); it hasn't picked it up yet.
+Other MCP tools
+Reading the builder's conversation…
+Skills
+Stopped
+Subagents started
+Team
+The bot reads this project's files and posts what changed. No agent posts to Discord.
+The team can't be read
+Waiting for the next message
+Who works on this build, and the tools each one called.
+Working
+model {m}
+not posted yet
+posted
+started {t} UTC
+{id} (latest, {m} min ago)
+{id} ({m} min ago)
+{n} tool call(s)
