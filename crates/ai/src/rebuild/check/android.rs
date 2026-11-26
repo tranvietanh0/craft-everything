@@ -200,8 +200,9 @@ pub fn build(app: &Path, place: &str, probe: &Probe, stop: &CheckStop, env: &[(&
         return Ok((false, format!("No Gradle wrapper ({wrapper}) in {place} yet: check in gradlew, gradlew.bat and gradle/wrapper/, and build with it.")));
     }
     let (program, mut args) = match (plan.route, bat) {
-        // The folder is on a Windows drive, so cmd.exe starts in it.
-        (Route::Windows, _) => (PathBuf::from("cmd.exe"), vec!["/c".to_string(), wrapper.to_string()]),
+        // The folder is on a Windows drive, so cmd.exe starts in it. `.\`: with
+        // NoDefaultCurrentDirectoryInExePath set, cmd.exe doesn't look in its folder for a bare name.
+        (Route::Windows, _) => (PathBuf::from("cmd.exe"), vec!["/c".to_string(), format!(".\\{wrapper}")]),
         (Route::Native, true) => (PathBuf::from(absolute(&app.join(wrapper))), Vec::new()),
         // Through sh: a wrapper written without its executable bit still runs.
         (Route::Native, false) => (PathBuf::from("sh"), vec![absolute(&app.join(wrapper))]),
