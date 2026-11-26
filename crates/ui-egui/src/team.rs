@@ -227,7 +227,9 @@ fn duration(ms: u64) -> String {
 fn agent(ui: &mut Ui, t: &Tokens, node: &AgentNode, path: &str, depth: usize) {
     let (state, icon, colour) = state_look(&node.state, t);
     let name = if depth == 0 { tr("Builder (Claude Code)") } else { node.kind.clone() };
-    let mut head = format!("{name} · {state}");
+    // A subagent's name and its task stay visible while the row is folded.
+    let task: String = node.description.chars().take(60).collect();
+    let mut head = if depth > 0 && !task.is_empty() { format!("{name} — {task} · {state}") } else { format!("{name} · {state}") };
     if let Some(ms) = node.duration_ms {
         head.push_str(&format!(" · {}", duration(ms)));
     }
