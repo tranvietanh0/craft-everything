@@ -77,6 +77,8 @@ pub mod window_tools;
 pub mod asset_tools;
 pub mod interaction_tools;
 pub mod project_tools;
+// The porting team's roles for a project (list, add or replace, remove, reset).
+pub mod team_tools;
 // The builder's feature progress: reported per feature, kept in the project's inbox.
 pub mod feature_tools;
 // Pinned builds: kept copies of a project's build, and what they started.
@@ -133,6 +135,7 @@ pub fn all() -> Vec<crate::ToolSpec> {
     v.extend(standin_tools::specs());
     v.extend(interaction_tools::specs());
     v.extend(project_tools::specs());
+    v.extend(team_tools::specs());
     v.extend(feature_tools::specs());
     v.extend(pin_tools::specs());
     v.extend(setup_tools::specs());

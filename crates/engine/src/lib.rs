@@ -32,6 +32,7 @@ pub mod session;
 pub mod settings;
 pub mod target;
 #[doc(hidden)]
+pub mod team;
 pub mod testing;
 pub mod tool;
 pub mod tool_list;
