@@ -60,6 +60,10 @@ pub struct PortState {
     pub activity: Vec<Activity>,
     /// The board as the last run left it, drawn again after a restart.
     pub board: Option<Board>,
+    /// A project mirrored from the craft desktop app: its own folder (as WSL reads it), which is
+    /// its project folder instead of `PORTS_ROOT/<slug>/project`. Its runs belong to the app.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_folder: Option<PathBuf>,
 }
 
 impl PortState {

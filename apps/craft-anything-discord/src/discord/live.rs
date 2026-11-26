@@ -17,8 +17,11 @@ pub struct Port {
     pub slug: String,
     /// `PORTS_ROOT/<slug>`, where `bot.json` is.
     pub dir: PathBuf,
-    /// `PORTS_ROOT/<slug>/project`, the rebuild's project folder.
+    /// `PORTS_ROOT/<slug>/project`, the rebuild's project folder; a mirrored app project's own folder.
     pub project: PathBuf,
+    /// Mirrored from the craft desktop app ([`super::mirror`]): its runs are the app's, and it has
+    /// no GitHub repo.
+    pub app_owned: bool,
     pub channel: ChannelId,
     pub thread: ChannelId,
     pub live: Mutex<Live>,
@@ -60,7 +63,8 @@ impl Port {
         let root = &bot.config.ports_root;
         let port = Arc::new(Port {
             slug: state.slug.clone(),
-            project: intake::project_dir(root, &state.slug),
+            project: state.app_folder.clone().unwrap_or_else(|| intake::project_dir(root, &state.slug)),
+            app_owned: state.app_folder.is_some(),
             dir: root.join(&state.slug),
             channel: ChannelId::new(state.channel.max(1)),
             thread: ChannelId::new(state.thread.max(1)),

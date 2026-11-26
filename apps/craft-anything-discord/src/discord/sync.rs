@@ -72,6 +72,7 @@ pub async fn run(http: Arc<Http>, services: Arc<Services>, port: Arc<Port>, mut 
                     plane_health.report(&http, &port, result).await;
                 }
                 if services.github_owner.is_some()
+                    && !port.app_owned
                     && let Some(repo) = github_health.report(&http, &port, ensure_repo(&services, &port).await).await
                 {
                     link_repo(&http, &port, &repo).await;
@@ -84,7 +85,7 @@ pub async fn run(http: Arc<Http>, services: Arc<Services>, port: Arc<Port>, mut 
                 }
             }
             SyncJob::Commit { message } => {
-                if services.github_owner.is_some() {
+                if services.github_owner.is_some() && !port.app_owned {
                     let result = commit(&http, &services, &port, message).await;
                     github_health.report(&http, &port, result).await;
                 }

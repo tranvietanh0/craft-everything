@@ -121,10 +121,10 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
     let file_name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let profile = CreateMessage::new().embed(embeds::profile_embed(&app, options.target, cmd.user.id, &file_name, bytes));
     let profile = channel.send_message(&ctx.http, profile).await.map_err(|e| format!("couldn't post the app profile: {e}"))?;
-    pin(ctx, channel, profile.id).await;
+    pin(&ctx.http, channel, profile.id).await;
     let board = CreateMessage::new().embed(embeds::board_embed(&label, &Board::new().render(Duration::ZERO, Usage::default().describe())));
     let board = channel.send_message(&ctx.http, board).await.map_err(|e| format!("couldn't post the progress board: {e}"))?;
-    pin(ctx, channel, board.id).await;
+    pin(&ctx.http, channel, board.id).await;
     let thread = channel
         .create_thread(&ctx.http, CreateThread::new("Log").kind(ChannelType::PublicThread))
         .await
@@ -169,7 +169,7 @@ async fn start(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>, options:
 
 /// Picks `port-<slug>` free among `taken` channel names and reserves `PORTS_ROOT/<slug>` by
 /// creating it, so two ports never share a folder. Returns the channel name and the slug.
-fn reserve_slug(ports_root: &Path, base: &str, mut taken: Vec<String>) -> Result<(String, String), String> {
+pub(super) fn reserve_slug(ports_root: &Path, base: &str, mut taken: Vec<String>) -> Result<(String, String), String> {
     std::fs::create_dir_all(ports_root).map_err(|e| format!("couldn't create {}: {e}", ports_root.display()))?;
     for _ in 0..SLUG_TRIES {
         let name = slug::channel_name(base, &taken);
@@ -183,8 +183,8 @@ fn reserve_slug(ports_root: &Path, base: &str, mut taken: Vec<String>) -> Result
     Err("couldn't find a free name for the port's folder".to_owned())
 }
 
-async fn pin(ctx: &Context, channel: ChannelId, message: serenity::all::MessageId) {
-    if let Err(e) = channel.pin(&ctx.http, message).await {
+pub(super) async fn pin(http: &serenity::all::Http, channel: ChannelId, message: serenity::all::MessageId) {
+    if let Err(e) = channel.pin(http, message).await {
         log::warn!("couldn't pin a message in {channel}: {e}");
     }
 }

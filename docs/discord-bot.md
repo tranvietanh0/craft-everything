@@ -135,6 +135,73 @@ to 1000 characters) and "Steps to reproduce" (optional). Sending it records the 
 
 If the verdict can't be recorded, the card opens again and the tester is told why.
 
+## Projects made in the desktop app
+
+`/port` builds are not the only ones the bot can show. With `MIRROR_APP_PROJECTS=1`, a project made
+in the craft desktop app (or with `craft-anything-cli`) gets its own channel the moment it is
+created, and the bot follows it from then on: the board, feature progress and tester cards with
+Pass and Fail, as for a `/port` build. Projects made before this was set up are not picked up.
+
+**How a project is registered.** Craft writes a small file when it creates a project, if
+`CRAFT_DISCORD_REGISTER` (in craft's own environment) names a folder: `<folder>/<created_ms>-<name>.json`,
+written atomically, with the project folder (as craft sees it: a WSL path when craft runs in WSL), its
+name, request, kind (`website`, `local` or `none`), target and stack (often still empty then; the
+bot reads the stack from `craft.json` later), and `created_ms`. Point it at the bot's register
+folder, `PORTS_ROOT/.bot/register` unless `MIRROR_REGISTER_DIR` says otherwise. The bot looks there
+every `MIRROR_POLL_SECS` (default 5). For each new file it:
+
+1. makes `port-<slug>` under the ports category, its topic and intro marked "(from app)", with the
+   intro and the board pinned and a "Log" thread;
+2. saves the project in `PORTS_ROOT/.bot/mirrors.json` (written atomically), then moves the file to
+   `register/done/`. A registration seen again (after a crash between the two) finds the project in
+   `mirrors.json` and makes no second channel. A folder inside `PORTS_ROOT` (one of the bot's own
+   ports) or without `craft.json` is not mirrored. A `mirrors.json` that can't be read stops
+   mirroring, with an error in the log, instead of making every channel again.
+
+**What it follows.** Every poll, the bot looks at the size and modification time of four files in
+the project folder and reads a file again only when one of them changed (polling, because file
+events don't work reliably on `/mnt/c`):
+
+| File | Becomes |
+|---|---|
+| `craft.json` | `status` → the stage (`inspecting` Study, `building` Build, `checking` Check, `ready` Done and a finished run, `stopped` paused, `needs_you` "Waiting for you in the desktop app"); `note` → the activity line; each new entry in `checks` → a check result. |
+| `inbox/features.json` | each feature whose record changed → a `feature` event, with its guide and similarity: the board, a tester card for `ready_to_test`, Plane. |
+| `usage.json` | what was added since the last look → one turn's tokens and cost on the board and in the daily summary (`~$` when the cost is a coding agent's estimate). |
+| `capture/README.md` | the study's notes: once they exist, the first look is posted. |
+
+These are the same events a `/port` run prints ([rebuild events](rebuild-events.md)), so the
+board, cards, Log thread and Plane treat both alike. What the bot has already seen of each
+project is kept in `mirrors.json`, so a restart reports nothing twice. A file that can't be read is
+said in the Log thread and read again when it changes. When the project starts again after it was
+ready or paused (a new request in the app), the board starts a new run.
+
+**The first look.** The channel's first report is a light look at what is being rebuilt, made from
+what craft's study already wrote (no extra AI call): the target and its kind, the stack, the
+builder and the request; the pictures of the original in `capture/` and `reference/`, by name, as
+the screens and pages it saw; the sections of the study's notes (`capture/*.md`); and the features
+and flows the builder reported so far. Later progress shows on the board, in the Log thread and as
+tester cards.
+
+**In a mirrored channel.** `/status` works (its queue line says the build is in the desktop app),
+and so does `/note` (the note goes to the project's `inbox/notes/`, as for a port). `/stop`,
+`/resume` and `/retry` answer that the build belongs to the desktop app and must be controlled
+there. Pass and Fail record into the project folder itself
+(`build_feature_report --building <project folder>`). Plane works as for `/port`. No GitHub repo is
+made and nothing is committed or pushed: the folder is the person's own.
+
+**Set it up.** In the bot's env file:
+
+```sh
+MIRROR_APP_PROJECTS=1
+# optional: MIRROR_REGISTER_DIR=/home/<you>/ports/.bot/register   MIRROR_POLL_SECS=5
+```
+
+and in the environment craft starts in (the desktop app or the CLI, in WSL), the same folder:
+
+```sh
+export CRAFT_DISCORD_REGISTER=/home/<you>/ports/.bot/register
+```
+
 ## Discord application setup
 
 1. In the Discord Developer Portal, create an application. Its **Application ID** is
@@ -180,6 +247,9 @@ never printed or logged. Keep the file private (`chmod 600`) and out of git.
 | `DAILY_SUMMARY_UTC_OFFSET` | no | The summary's time zone as a fixed UTC offset, such as `+07:00` or `-05:30`. Default: the system's local time zone. |
 | `PRETRUST_PORTS` | no | `1` to trust each port's project folder in Claude Code's config before a herdr build (see [Trusting port folders for you](#trusting-port-folders-for-you)). Default off. |
 | `CLAUDE_CONFIG_JSON` | no | Claude Code's `.claude.json` for `PRETRUST_PORTS`, as WSL (`/mnt/c/…`) or Windows (`C:\…`) sees it. Default: `.claude.json` in the Windows profile herdr runs under. |
+| `MIRROR_APP_PROJECTS` | no | `1` to mirror projects the craft desktop app registers when it creates them (see [Projects made in the desktop app](#projects-made-in-the-desktop-app)). Default off. |
+| `MIRROR_REGISTER_DIR` | no | Where craft writes the registrations (`CRAFT_DISCORD_REGISTER`). Default `PORTS_ROOT/.bot/register`. |
+| `MIRROR_POLL_SECS` | no | How often, in seconds (1 to 3600), the register folder and the mirrored projects are looked at. Default 5. |
 
 The three `PLANE_*` keys go together: with none of them Plane is off, and with only some the bot
 stops and names the missing one. Without `GITHUB_OWNER` no repo is made.

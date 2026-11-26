@@ -29,6 +29,12 @@ pub async fn handle(ctx: &Context, cmd: &CommandInteraction, bot: &Arc<Bot>) {
         reply(ctx, cmd, &format!("Use /{name} in a port's channel.")).await;
         return;
     };
+    if port.app_owned
+        && let Some(answer) = control::app_owned_answer(name)
+    {
+        reply(ctx, cmd, &answer).await;
+        return;
+    }
     let answer = match name {
         STATUS => status(bot, &port).await,
         STOP => stop(ctx, bot, &port).await,
@@ -55,6 +61,7 @@ async fn status(bot: &Bot, port: &Port) -> String {
     let place = {
         let queue = bot.queue.lock().await;
         match (queue.running().is_some_and(|j| is_port(j, port)), queue.position(|j| is_port(j, port))) {
+            _ if port.app_owned => Place::App,
             (true, _) => Place::Running,
             (false, Some(n)) => Place::Waiting(n),
             (false, None) => Place::NotQueued,
