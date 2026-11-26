@@ -66,8 +66,7 @@ pub fn register_dir(ports_root: &Path, explicit: Option<&Path>) -> PathBuf {
 /// The registration files waiting in `dir`, oldest first (the names start with the creation time).
 pub fn pending(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut files: Vec<PathBuf> =
-        entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "json")).collect();
+    let mut files: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "json")).collect();
     files.sort();
     files
 }

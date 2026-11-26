@@ -38,7 +38,8 @@ fn write(dir: &Path, name: &str, text: &str) {
 fn a_windows_folder_in_a_registration_is_read_as_wsl_sees_it() {
     let d = tempfile::tempdir().unwrap();
     let file = d.path().join("1-tani.json");
-    fs::write(&file, r#"{"version":1,"folder":"C:\\Projects\\MyProject\\tani","name":"Tani","kind":"local","target":"x.apks","stack":"","created_ms":1}"#).unwrap();
+    fs::write(&file, r#"{"version":1,"folder":"C:\\Projects\\MyProject\\tani","name":"Tani","kind":"local","target":"x.apks","stack":"","created_ms":1}"#)
+        .unwrap();
     let reg = Registration::read(&file).unwrap();
     assert_eq!(reg.folder_path(), PathBuf::from("/mnt/c/Projects/MyProject/tani"));
     let linux = Registration { folder: "/mnt/c/Projects/x".into(), ..reg };
@@ -122,7 +123,9 @@ fn the_project_files_become_the_events_a_rebuild_run_prints() {
         similarity: Some(80.0)
     }));
     assert!(first.events.iter().any(|e| matches!(e, Event::Feature { name, state, .. } if name == "Map" && state == "in_progress")));
-    assert!(first.events.iter().any(|e| matches!(e, Event::TurnDone { input_tokens: 1000, output_tokens: 200, cost_usd: Some(c), cost_is_estimate: true, .. } if (*c - 0.5).abs() < 1e-9)));
+    assert!(first.events.iter().any(
+        |e| matches!(e, Event::TurnDone { input_tokens: 1000, output_tokens: 200, cost_usd: Some(c), cost_is_estimate: true, .. } if (*c - 0.5).abs() < 1e-9)
+    ));
 
     // A later write: only what changed is reported, and usage only by its difference.
     write(folder.path(), MANIFEST, &manifest("checking", "Checking it", CHECK));

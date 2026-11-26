@@ -105,7 +105,9 @@ pub const RUN_COMMANDS: [&str; 3] = ["stop", "resume", "retry"];
 /// the desktop app's. `None` for the commands that work there (`/status`, `/note`).
 pub fn app_owned_answer(command: &str) -> Option<String> {
     RUN_COMMANDS.contains(&command).then(|| {
-        format!("This build belongs to the craft desktop app, so /{command} can't control it: stop, resume or retry it in the app. /status and /note work here.")
+        format!(
+            "This build belongs to the craft desktop app, so /{command} can't control it: stop, resume or retry it in the app. /status and /note work here."
+        )
     })
 }
 

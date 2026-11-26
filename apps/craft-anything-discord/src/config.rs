@@ -400,14 +400,21 @@ mod tests {
     fn mirroring_app_projects_is_off_unless_asked_for_and_polls_every_five_seconds() {
         let config = load(&full_env()).expect("loads");
         assert_eq!((config.mirror_apps, config.mirror_register_dir, config.mirror_poll.as_secs()), (false, None, DEFAULT_MIRROR_POLL_SECS));
-        let on = load(&format!("{}
+        let on = load(&format!(
+            "{}
 MIRROR_APP_PROJECTS=1
 MIRROR_REGISTER_DIR=/srv/reg
-MIRROR_POLL_SECS=2", full_env())).expect("loads");
+MIRROR_POLL_SECS=2",
+            full_env()
+        ))
+        .expect("loads");
         assert_eq!((on.mirror_apps, on.mirror_register_dir, on.mirror_poll.as_secs()), (true, Some(PathBuf::from("/srv/reg")), 2));
         for bad in ["0", "abc", "3601"] {
-            let text = format!("{}
-MIRROR_POLL_SECS={bad}", full_env());
+            let text = format!(
+                "{}
+MIRROR_POLL_SECS={bad}",
+                full_env()
+            );
             assert!(matches!(load(&text), Err(ConfigError::Invalid { key: "MIRROR_POLL_SECS", .. })), "{bad}");
         }
     }

@@ -134,7 +134,11 @@ async fn open_channel(http: &Arc<Http>, bot: &Arc<Bot>, reg: &Registration, fold
     let board = CreateMessage::new().embed(embeds::board_embed(&label, &Board::new().render(Duration::ZERO, Usage::default().describe())));
     let board = channel.send_message(http, board).await.map_err(|e| format!("couldn't post the progress board: {e}"))?;
     pin(http, channel, board.id).await;
-    let thread = channel.create_thread(http, CreateThread::new("Log").kind(ChannelType::PublicThread)).await.map_err(|e| format!("couldn't create the Log thread: {e}"))?.id;
+    let thread = channel
+        .create_thread(http, CreateThread::new("Log").kind(ChannelType::PublicThread))
+        .await
+        .map_err(|e| format!("couldn't create the Log thread: {e}"))?
+        .id;
     let mut state = PortState {
         slug: slug.clone(),
         label,
