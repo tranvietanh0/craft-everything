@@ -219,5 +219,5 @@ fn invalid(message: String) -> ToolError {
 }
 
 fn not_found(id: &str) -> ToolError {
-    ToolError::new(ErrorCode::NotFound, format!("No role called {id}.")).with_remediation("Use team_list for the ids on this team.")
+    ToolError::new(ErrorCode::NotFound, format!("No role called {id}.")).with_remediation("Use project_team_list for the ids on this team.")
 }

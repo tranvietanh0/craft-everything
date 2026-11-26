@@ -1919,7 +1919,8 @@ mod tests {
         assert_eq!(Workspace::list(dir.path().parent().unwrap()).iter().filter(|w| w.root == dir.path()).count(), 1, "still listed");
 
         // A newer manifest whose shape this build can't read at all is refused, in plain words.
-        std::fs::write(dir.path().join(MANIFEST), r#"{"version": 7, "name": {"parts": []}}"#).unwrap();
+        let newer_shape = format!(r#"{{"version": {}, "name": {{"parts": []}}}}"#, MANIFEST_VERSION + 1);
+        std::fs::write(dir.path().join(MANIFEST), newer_shape).unwrap();
         let err = Workspace::open(dir.path()).unwrap_err();
         assert_eq!(err.code, ErrorCode::NotSupported);
         assert!(err.message.contains("newer Craft Anything") && err.remediation.is_some());
@@ -2136,7 +2137,7 @@ mod tests {
         ws.manifest.toolchain = Some("Gradle".into());
         ws.save().unwrap();
         let saved: Value = serde_json::from_slice(&std::fs::read(ws.root.join("craft.json")).unwrap()).unwrap();
-        assert_eq!((saved["version"].as_u64(), saved["toolchain"].as_str()), (Some(6), Some("Gradle")));
+        assert_eq!((saved["version"].as_u64(), saved["toolchain"].as_str()), (Some(u64::from(MANIFEST_VERSION)), Some("Gradle")));
         // A version-5 build reads up to 5, so it opens this one read-only (newer_manifests_open_read_only_and_are_never_overwritten).
         let mut old = saved.clone();
         old["version"] = 5.into();

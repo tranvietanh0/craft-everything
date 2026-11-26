@@ -14,7 +14,7 @@ use std::path::PathBuf;
 pub fn specs() -> Vec<ToolSpec> {
     vec![
         ToolSpec {
-            id: "team_list",
+            id: "project_team_list",
             title: "List the porting team",
             summary: "A project's porting team: each role's id, name, when the builder should use it, its prompt, model, tools, skills and hooks. `default` is true when the person hasn't changed the team and the default roster applies.",
             beginner: "Shows the roles on a project's team.",
@@ -22,10 +22,10 @@ pub fn specs() -> Vec<ToolSpec> {
             effects: Effects::READ_ONLY,
             requires: Requires::Nothing,
             input_schema: schema_of::<ProjectParams>,
-            run: team_list,
+            run: project_team_list,
         },
         ToolSpec {
-            id: "team_set_role",
+            id: "project_team_set_role",
             title: "Add or change a team role",
             summary: "Add a role to a project's team, or replace the role with the same id. With `replaces`, the role with that id is replaced by this one, which may carry a new id (a rename). Ids are file-safe slugs; a bad field or a clash is refused and nothing is saved. Skills and hooks are kept in the roster as the person wrote them.",
             beginner: "Adds or edits a role on a project's team.",
@@ -33,10 +33,10 @@ pub fn specs() -> Vec<ToolSpec> {
             effects: Effects::WRITES_FILESYSTEM,
             requires: Requires::Nothing,
             input_schema: schema_of::<SetRoleParams>,
-            run: team_set_role,
+            run: project_team_set_role,
         },
         ToolSpec {
-            id: "team_remove_role",
+            id: "project_team_remove_role",
             title: "Remove a team role",
             summary: "Take a role off a project's team by id. The default roster is kept until the team is changed, so removing from it saves the rest.",
             beginner: "Removes a role from a project's team.",
@@ -44,10 +44,10 @@ pub fn specs() -> Vec<ToolSpec> {
             effects: Effects::WRITES_FILESYSTEM,
             requires: Requires::Nothing,
             input_schema: schema_of::<RemoveRoleParams>,
-            run: team_remove_role,
+            run: project_team_remove_role,
         },
         ToolSpec {
-            id: "team_reset",
+            id: "project_team_reset",
             title: "Reset the porting team",
             summary: "Go back to the default team of five roles (analyst, asset porter, UI rebuilder, logic porter, tester) and forget the person's changes in craft.json.",
             beginner: "Puts a project's team back to the standard one.",
@@ -55,7 +55,7 @@ pub fn specs() -> Vec<ToolSpec> {
             effects: Effects::WRITES_FILESYSTEM,
             requires: Requires::Nothing,
             input_schema: schema_of::<ProjectParams>,
-            run: team_reset,
+            run: project_team_reset,
         },
     ]
 }
@@ -84,17 +84,17 @@ pub struct SetRoleParams {
 pub struct RemoveRoleParams {
     /// The project's folder.
     pub project: PathBuf,
-    /// The id of the role to remove (from team_list).
+    /// The id of the role to remove (from project_team_list).
     pub id: String,
 }
 
-fn team_list(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
+fn project_team_list(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
     let p: ProjectParams = parse_params(params)?;
     let ws = open(&p.project)?;
     Ok(ToolOutput::Value(roster_json(&ws)))
 }
 
-fn team_set_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
+fn project_team_set_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
     let p: SetRoleParams = parse_params(params)?;
     let mut ws = open(&p.project)?;
     let (role, replaces) = (p.role, p.replaces);
@@ -110,7 +110,7 @@ fn team_set_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolEr
     Ok(ToolOutput::Value(roster_json(&ws)))
 }
 
-fn team_remove_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
+fn project_team_remove_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
     let p: RemoveRoleParams = parse_params(params)?;
     let mut ws = open(&p.project)?;
     let mut outcome = Ok(());
@@ -125,7 +125,7 @@ fn team_remove_role(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, Too
     Ok(ToolOutput::Value(roster_json(&ws)))
 }
 
-fn team_reset(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
+fn project_team_reset(_ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, ToolError> {
     let p: ProjectParams = parse_params(params)?;
     let mut ws = open(&p.project)?;
     ws.set_person(|m: &mut Manifest| m.team = None)?;
@@ -161,22 +161,22 @@ mod tests {
         let e = Engine::new(crate::testing::session());
         let root = json!(ws.root);
 
-        let before = call(&e, "team_list", json!({"project": root})).unwrap();
+        let before = call(&e, "project_team_list", json!({"project": root})).unwrap();
         assert_eq!((before["default"].clone(), before["roles"].as_array().map(Vec::len)), (json!(true), Some(5)));
 
-        let added = call(&e, "team_set_role", json!({"project": root, "role": role_json("reviewer")})).unwrap();
+        let added = call(&e, "project_team_set_role", json!({"project": root, "role": role_json("reviewer")})).unwrap();
         assert_eq!((added["default"].clone(), added["roles"].as_array().map(Vec::len)), (json!(false), Some(6)));
         let saved = std::fs::read_to_string(ws.root.join(MANIFEST)).unwrap();
         assert!(saved.contains("\"reviewer\""), "the change is saved in craft.json");
 
         let renamed = json!({"project": root, "replaces": "reviewer", "role": role_json("auditor")});
-        call(&e, "team_set_role", renamed).unwrap();
-        let ids = call(&e, "team_list", json!({"project": root})).unwrap();
+        call(&e, "project_team_set_role", renamed).unwrap();
+        let ids = call(&e, "project_team_list", json!({"project": root})).unwrap();
         assert!(ids["roles"].as_array().unwrap().iter().any(|r| r["id"] == "auditor"));
 
-        call(&e, "team_remove_role", json!({"project": root, "id": "auditor"})).unwrap();
-        call(&e, "team_reset", json!({"project": root})).unwrap();
-        let back = call(&e, "team_list", json!({"project": root})).unwrap();
+        call(&e, "project_team_remove_role", json!({"project": root, "id": "auditor"})).unwrap();
+        call(&e, "project_team_reset", json!({"project": root})).unwrap();
+        let back = call(&e, "project_team_list", json!({"project": root})).unwrap();
         assert_eq!(back["default"], json!(true));
         assert!(!std::fs::read_to_string(ws.root.join(MANIFEST)).unwrap().contains("\"team\""));
     }
@@ -188,8 +188,8 @@ mod tests {
         let e = Engine::new(crate::testing::session());
         let root = json!(ws.root);
         let bad = json!({"project": root, "role": role_json("Not A Slug")});
-        assert!(call(&e, "team_set_role", bad).is_err());
-        assert!(call(&e, "team_remove_role", json!({"project": root, "id": "nobody"})).is_err());
+        assert!(call(&e, "project_team_set_role", bad).is_err());
+        assert!(call(&e, "project_team_remove_role", json!({"project": root, "id": "nobody"})).is_err());
         assert!(!std::fs::read_to_string(ws.root.join(MANIFEST)).unwrap().contains("\"team\""));
     }
 }
