@@ -44,6 +44,12 @@ pub struct Stack {
     /// toolchains.toml, the first whose files are there.
     #[serde(default)]
     pub toolchains: Vec<String>,
+    /// Its build is an Android app, checked by building a debug APK with the Gradle wrapper.
+    #[serde(default)]
+    pub android: bool,
+    /// File extensions of an app target (`apk`) this stack is the app kind's default for.
+    #[serde(default)]
+    pub default_for: Vec<String>,
 }
 
 pub use craft_anything_engine::toolchains::{Toolchain, found_in as toolchain_in};
@@ -127,6 +133,18 @@ pub fn missing_program(stack: &str, have: impl Fn(&str) -> bool) -> Option<(&'st
     let s = get(stack)?;
     let program = s.program.as_deref().filter(|p| !have(p))?;
     Some((program, s.program_from.as_deref().unwrap_or_default()))
+}
+
+/// Whether `stack` builds an Android app ([`Stack::android`]).
+pub fn is_android(stack: &str) -> bool {
+    get(stack).is_some_and(|s| s.android)
+}
+
+/// The stack an app made from the file `target` defaults to by its extension
+/// ([`Stack::default_for`], ignoring case); None for a file no stack claims or no extension.
+pub fn default_for(target: &std::path::Path) -> Option<&'static Stack> {
+    let ext = target.extension()?.to_str()?.to_ascii_lowercase();
+    catalogue().iter().find(|s| s.default_for.contains(&ext))
 }
 
 /// A stack picked by name: its full name or its engine id, ignoring case (`unity`, `Godot`,
@@ -361,6 +379,31 @@ mod tests {
         for l in &table().library {
             assert!(!l.steps.is_empty() && !l.asked_by.is_empty(), "{l:?}");
             assert!(l.stacks.iter().all(|s| get(s).is_some()), "{} names a stack that isn't in the table", l.name);
+        }
+    }
+
+    /// The Android stack is asked for by its own words, found by its module's manifest before
+    /// Java's Gradle file, and is the default for Android packages only.
+    #[test]
+    fn the_android_stack_is_asked_for_found_and_defaulted_by_its_own_signs() {
+        const ANDROID: &str = "Kotlin + Jetpack Compose (Android)";
+        for r in ["rewrite it in Kotlin", "use Jetpack Compose", "make it an Android-native app", "a native Android app"] {
+            assert_eq!(asked_for(&words(r)).map(|s| s.name.as_str()), Some(ANDROID), "{r}");
+        }
+        for r in ["redo this in Java", "a website about android phones", "compose an email"] {
+            assert_ne!(asked_for(&words(r)).map(|s| s.name.as_str()), Some(ANDROID), "{r}");
+        }
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("build.gradle.kts"), "").unwrap();
+        assert_eq!(found_in(d.path()).map(|s| s.name.as_str()), Some("Java"), "plain Gradle is Java");
+        std::fs::create_dir_all(d.path().join("app/src/main")).unwrap();
+        std::fs::write(d.path().join("app/src/main/AndroidManifest.xml"), "<manifest/>").unwrap();
+        assert_eq!(found_in(d.path()).map(|s| s.name.as_str()), Some(ANDROID));
+        assert_eq!(toolchain_for(ANDROID, None, d.path()).map(|t| t.name.as_str()), Some("Gradle"));
+        assert!(is_android(ANDROID) && !is_android("Java"));
+        assert_eq!(default_for(std::path::Path::new("/x/Shop.XAPK")).map(|s| s.name.as_str()), Some(ANDROID));
+        for other in ["/x/tool.exe", "/x/lib.jar", "/x/apk", "/x/folder"] {
+            assert!(default_for(std::path::Path::new(other)).is_none(), "{other}");
         }
     }
 

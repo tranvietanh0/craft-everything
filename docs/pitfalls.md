@@ -263,6 +263,11 @@ it was scripted for and answers anything else as a real server that doesn't know
 
 ## Building and running
 
+**`cmd.exe /c gradlew.bat` from WSL said "not recognized" in the right folder.** The unit tests
+passed with a stand-in wrapper; only the live build showed that Windows had
+`NoDefaultCurrentDirectoryInExePath` set, so cmd.exe didn't look in its own folder for a bare name.
+Start a program in the working folder as `.\name.bat`, and run a Windows-interop build live once.
+
 **A documentation edit rebuilt dependencies in a separate cache.** A sequential review follow-up
 used another target directory for its commit hook, triggering an unnecessary build. Separate
 build caches are for concurrent work; reuse the current checkout's cache for sequential work.

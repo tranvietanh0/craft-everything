@@ -19,6 +19,9 @@
 # files are there (Java's Maven, then Gradle), so a project moved to another language is checked
 # in the new one while the old manifest is still there.
 #
+# `default_for` lists file extensions of an app target (`apk`) the stack is the app kind's default
+# for. `android` marks a stack whose build is an Android app, checked by building a debug APK.
+#
 # `site` marks a stack whose build is a website, so a project built with it and with nothing to
 # recreate is one, whatever its request says.
 #
@@ -85,6 +88,18 @@ toolchains = [".NET"]
 found_by = ["*.sln", "*.csproj"]
 asked_by = [" csharp ", " c sharp ", " dotnet ", " net core "]
 steps = "Use C# on .NET: put the .csproj (or the .sln) directly in app/ (not in a folder inside it), and run `dotnet build` from app/ until it succeeds."
+
+# Before Java: an Android project has a build.gradle.kts at its top too. `default_for` makes it
+# the app kind's default for an Android package target; `android` checks it by building a debug
+# APK with the Gradle wrapper (check/android.rs finds the JDK and SDK, through Windows from WSL).
+[[stack]]
+name = "Kotlin + Jetpack Compose (Android)"
+toolchains = ["Gradle"]
+android = true
+default_for = ["apk", "xapk", "apks", "aab"]
+found_by = ["app/src/main/AndroidManifest.xml"]
+asked_by = [" kotlin ", " jetpack compose ", " android native ", " native android "]
+steps = "Rebuild it as a native Android app in Kotlin with Jetpack Compose, built with Gradle. Make app/ a Gradle project with one module, app/app/: settings.gradle.kts (include(\":app\")), build.gradle.kts, gradle.properties (android.useAndroidX=true) and app/app/build.gradle.kts with the Android application and Kotlin Compose plugins, plus app/app/src/main/AndroidManifest.xml and the Kotlin sources under app/app/src/main/kotlin/. Check in the Gradle wrapper (gradlew, gradlew.bat and gradle/wrapper/ with gradle-wrapper.jar and gradle-wrapper.properties); with no Gradle installed, download a Gradle distribution outside app/ and run its `gradle wrapper` in app/. Take the original's package name, minSdk and targetSdk from the study notes (or android_package_show on the original): set applicationId to that package name with `.port` added (never the original's own), keep its minSdk and use its targetSdk (or a newer one the SDK has). The Android SDK may be read-only, so use a compileSdk and build-tools version it already has (ANDROID_HOME, or the SDK the build check names) instead of ones Gradle would download. Bring the original's images, sounds and other assets from the capture into app/app/src/main/res/ and app/app/src/main/assets/. Then run `./gradlew assembleDebug` (`gradlew.bat assembleDebug` on Windows) from app/ until it succeeds: it must leave a debug APK in app/app/build/outputs/apk/debug/."
 
 # The trailing space keeps " in javascript" out.
 [[stack]]

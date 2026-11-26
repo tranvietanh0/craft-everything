@@ -996,6 +996,7 @@ impl Worker {
         // SSH builds here, so only a coding agent on the other computer skips it.
         if !study::tools_run_remotely(remote, api.is_some()) && stacks::toolchain_in(&ws.app_dir()).is_none() {
             missing_program_stop(&ws.manifest.stack, |p| craft_anything_platform::which(p).is_some())?;
+            check::android_ready(&ws.manifest.stack, &ws.app_dir())?;
         }
         let api_resumed = api.as_ref().is_some_and(crate::agent::ApiConversation::resumed);
         let kept = KeptHistory { in_mode: kept_without_api.in_mode || api_resumed, elsewhere: kept_without_api.elsewhere };

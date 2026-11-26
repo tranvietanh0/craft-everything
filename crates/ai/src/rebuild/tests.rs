@@ -4396,6 +4396,28 @@ fn a_console_original_is_rebuilt_as_a_console_program() {
     assert_eq!(choose("A notes tool", &TargetRef::None).1, "Rust + egui (eframe)");
 }
 
+/// An Android package rebuilt as an app is a native Android app; the same package rebuilt as a
+/// game keeps the game's engine, another file stays a desktop app, and a stack the person names
+/// still wins.
+#[test]
+fn an_android_package_app_is_rebuilt_as_a_native_android_app() {
+    const ANDROID: &str = "Kotlin + Jetpack Compose (Android)";
+    let d = tempfile::tempdir().unwrap();
+    for name in ["shop.apk", "Shop.XAPK", "shop.apks", "shop.aab"] {
+        let path = d.path().join(name);
+        std::fs::write(&path, b"PK\x05\x06").unwrap();
+        let target = TargetRef::Local { path };
+        assert_eq!(choose("Port this app", &target), ("app", ANDROID), "{name}");
+        assert_eq!(choose("Port this game", &target), ("game", "Unity"), "{name}: a game keeps its engine logic");
+        assert_eq!(choose("Port this app with Electron", &target).1, "Electron", "{name}: a named stack wins");
+    }
+    let exe = d.path().join("tool.exe");
+    std::fs::write(&exe, craft_anything_testkit::pe64_subsystem(2)).unwrap();
+    assert_eq!(choose("Port this app", &TargetRef::Local { path: exe }).1, "Rust + egui (eframe)");
+    assert_eq!(choose("A notes tool", &TargetRef::None).1, "Rust + egui (eframe)");
+    assert_eq!(choose("A notes app in Kotlin", &TargetRef::None).1, ANDROID, "asked for by name");
+}
+
 #[test]
 fn a_note_the_builder_took_at_a_step_joins_the_feed_and_isnt_sent_again() {
     use craft_anything_engine::questions::{self, AskedQuestion};

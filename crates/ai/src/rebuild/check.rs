@@ -5,6 +5,17 @@
 use super::*;
 use std::ffi::OsStr;
 
+pub(super) mod android;
+
+/// Stops a new Android build before its first turn when this computer can't build it (no JDK or
+/// SDK found), with what to install.
+pub(super) fn android_ready(stack: &str, app: &Path) -> Result<(), ToolError> {
+    if !stacks::is_android(stack) {
+        return Ok(());
+    }
+    android::plan(app, &android::Probe::current()).map(|_| ())
+}
+
 /// Run a step of a project's build in `app`, with `env` set for it on top of ours: whether it
 /// succeeded, and what it printed.
 fn run_in(app: &Path, prog: &Path, args: &[String], minutes: u64, stop: &CheckStop, env: &[(&str, &OsStr)]) -> Result<(bool, String), ToolError> {
@@ -96,6 +107,9 @@ pub(super) fn own_build_check(
     stop: &CheckStop,
     env: &[(&str, &OsStr)],
 ) -> Result<(bool, String), ToolError> {
+    if stacks::is_android(stack) && stacks::toolchain_for(stack, toolchain, app).is_some_and(|t| t.name == "Gradle") {
+        return android::build(app, place, &android::Probe::current(), stop, env);
+    }
     let engine = engine_for(stack, app);
     if let (Some(game::Builder::Unity), Some(ed)) = (engine, editor) {
         return own_unity_check(app, ed, stop, env);
@@ -179,6 +193,9 @@ pub(super) fn build_check(
     let app_s = app_abs.display().to_string();
     let built = || packaged_program(&app_abs.join("Build")).is_some();
     let builds_with = |name: &str| stacks::toolchain_for(stack, toolchain, app).is_none_or(|t| t.name == name);
+    if stacks::is_android(stack) && builds_with("Gradle") {
+        return android::build(app, place, &android::Probe::current(), stop, env);
+    }
     let result: Result<(bool, String), ToolError> = match (engine_for(stack, app), editor) {
         (Some(game::Builder::Unity), Some(ed)) => {
             if !app.join("Assets").is_dir() {

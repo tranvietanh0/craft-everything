@@ -31,9 +31,15 @@ impl TargetKind for AppKind {
         Some(1)
     }
 
-    /// A console program is rebuilt as one; anything else as a windowed app. Telling them apart
-    /// reads the program, so only in Deep mode.
+    /// A file a stack is the default for by its extension (an Android package: a native Android
+    /// app) is rebuilt with that stack. Otherwise a console program is rebuilt as one and anything
+    /// else as a windowed app; telling those apart reads the program, so only in Deep mode.
     fn default_stack(&self, cx: &DetectCx) -> &'static str {
+        if let TargetRef::Local { path } = cx.target
+            && let Some(s) = stacks::default_for(path)
+        {
+            return s.name.as_str();
+        }
         match cx.target {
             TargetRef::Local { path } if cx.deep && runs::is_console(&locate(path, false).0) => "Rust (console)",
             _ => "Rust + egui (eframe)",
