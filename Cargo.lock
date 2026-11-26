@@ -1376,6 +1376,7 @@ name = "craft-anything-ai"
 version = "0.6.1"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "craft-anything-engine",
  "craft-anything-engines",
  "craft-anything-evidence",

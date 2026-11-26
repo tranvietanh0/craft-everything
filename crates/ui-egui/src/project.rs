@@ -932,6 +932,29 @@ pub fn show(app: &mut CraftApp, ui: &mut Ui) {
         let width = ui.available_width();
         let max_w = width.min(720.0);
         let pad = ((width - max_w) / 2.0).max(0.0);
+        // The conversation, or who works on the build (the Team tab).
+        let on_team = app.team.as_ref().is_some_and(|p| p.root() == ws.root);
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            match widgets::segmented(ui, &["Conversation", "Team"], usize::from(on_team), theme::ControlSize::Small) {
+                Some(1) => app.team = Some(crate::team::TeamPanel::new(ws.root.clone())),
+                Some(_) => app.team = None,
+                None => {}
+            }
+        });
+        ui.add_space(theme::space::SM);
+        if let Some(panel) = app.team.as_ref().filter(|p| p.root() == ws.root) {
+            // Fill the pane's remaining height, not just one row.
+            let size = Vec2::new(width, ui.available_height());
+            ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                ui.add_space(pad);
+                ui.allocate_ui_with_layout(Vec2::new(max_w, size.y), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_min_size(Vec2::new(max_w, size.y));
+                    crate::team::show(panel, ui);
+                });
+            });
+            return;
+        }
         // The feed gets what the prompt box leaves; the box grows with its text, so its height
         // is measured each frame and used on the next.
         let comp_id = ui.id().with("project-composer-h");
