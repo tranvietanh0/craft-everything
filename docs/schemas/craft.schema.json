@@ -155,6 +155,16 @@
     "target": {
       "$ref": "#/$defs/TargetRef"
     },
+    "team": {
+      "description": "The porting team's roles, once the person changed them; none: the default roster\n([`crate::team::default_roster`]). The person's, like the budget.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/Role"
+      }
+    },
     "toolchain": {
       "description": "The toolchain a move to `stack` was confirmed with (\"Gradle\", for a Java port that wrote\nbuild.gradle.kts beside an old pom.xml), when the stack has more than one; none: not recorded.",
       "type": [
@@ -304,6 +314,28 @@
         "passed"
       ]
     },
+    "Hook": {
+      "description": "A hook a role runs: an event, the tool calls it applies to, and the command.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "The command to run, on one line.",
+          "type": "string"
+        },
+        "event": {
+          "description": "The event (`PreToolUse`, `PostToolUse`, `Stop`…).",
+          "type": "string"
+        },
+        "matcher": {
+          "description": "Which tool calls it applies to (`Bash`, `Edit|Write`); empty for every one.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "command"
+      ]
+    },
     "PageLikeness": {
       "description": "How alike one page of a website and its rebuild are.",
       "type": "object",
@@ -341,6 +373,65 @@
           "type": "string",
           "const": "decide"
         }
+      ]
+    },
+    "Role": {
+      "description": "One role on the porting team.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "When the builder should hand work to this role.",
+          "type": "string"
+        },
+        "hooks": {
+          "description": "Hooks that run while the role works.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Hook"
+          }
+        },
+        "id": {
+          "description": "File-safe id: lower-case letters, digits and single hyphens, starting with a letter. It is\nthe subagent's name and what a transcript's `subagent_type` is matched against.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The model the role runs on (`sonnet`, `opus`, `haiku`, `inherit` or a full model id); none\nmeans the builder's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The name people see. Renaming it keeps the id.",
+          "type": "string"
+        },
+        "prompt": {
+          "description": "The role's instructions (the subagent's system prompt).",
+          "type": "string"
+        },
+        "skills": {
+          "description": "Skill folder names the role uses.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tools": {
+          "description": "The tools the role may use; none means the default set.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "prompt"
       ]
     },
     "Status": {

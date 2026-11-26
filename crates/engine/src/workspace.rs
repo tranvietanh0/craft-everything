@@ -87,11 +87,11 @@ pub const GHIDRA_STOPPED: &str = "ghidra-stopped";
 pub const GHIDRA_STOP_LOCK: &str = "ghidra-stop.lock";
 
 /// The current `craft.json` format version. Bumping it means appending a step to [`MANIFEST_STEPS`].
-pub const MANIFEST_VERSION: u32 = 6;
+pub const MANIFEST_VERSION: u32 = 7;
 
 /// The steps that bring an older `craft.json` forward; step `i` goes from version `i` to `i + 1`.
 const MANIFEST_STEPS: &[versioned::Step<Value>] =
-    &[manifest_v0_to_v1, manifest_v1_to_v2, manifest_v2_to_v3, manifest_v3_to_v4, manifest_v4_to_v5, manifest_v5_to_v6];
+    &[manifest_v0_to_v1, manifest_v1_to_v2, manifest_v2_to_v3, manifest_v3_to_v4, manifest_v4_to_v5, manifest_v5_to_v6, manifest_v6_to_v7];
 const _: () = assert!(MANIFEST_STEPS.len() == MANIFEST_VERSION as usize, "one step per craft.json version");
 
 /// Version 0 (no `version` field) has the same shape as version 1; only the number is new.
@@ -140,6 +140,13 @@ fn manifest_v4_to_v5(doc: &mut Value) -> Result<(), String> {
 /// by default. The number is new so an older build, which would drop it when it saves (and a
 /// Java port's checks could go back to Maven), opens such a project read-only instead.
 fn manifest_v5_to_v6(doc: &mut Value) -> Result<(), String> {
+    if doc.is_object() { Ok(()) } else { Err("the manifest isn't a JSON object".into()) }
+}
+
+/// Version 7 adds the porting team's roles (`team`), none by default: the default roster applies.
+/// The number is new so an older build, which would drop the roster when it saves, opens such a
+/// project read-only instead.
+fn manifest_v6_to_v7(doc: &mut Value) -> Result<(), String> {
     if doc.is_object() { Ok(()) } else { Err("the manifest isn't a JSON object".into()) }
 }
 
@@ -493,6 +500,10 @@ pub struct Manifest {
     /// saves, which costs at most one more reminder, so the format version stays.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub decompiled: bool,
+    /// The porting team's roles, once the person changed them; none: the default roster
+    /// ([`crate::team::default_roster`]). The person's, like the budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<Vec<crate::team::Role>>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -536,6 +547,7 @@ impl Manifest {
             awaiting_check: false,
             not_working_checks: 0,
             decompiled: false,
+            team: None,
         }
     }
 
@@ -559,6 +571,7 @@ impl Manifest {
         self.builder.clone_from(&other.builder);
         self.questions = other.questions;
         self.approvals.clone_from(&other.approvals);
+        self.team.clone_from(&other.team);
         self.name.clone_from(&other.name);
     }
 }

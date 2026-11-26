@@ -527,7 +527,7 @@ pub struct AnswerParams {
     pub always: bool,
 }
 
-fn open(project: &std::path::Path) -> Result<Workspace, ToolError> {
+pub(super) fn open(project: &std::path::Path) -> Result<Workspace, ToolError> {
     Workspace::open(project).map_err(|e| {
         let why = e.message.clone();
         ToolError::new(ErrorCode::NotFound, format!("{} isn't a project folder: {why}", project.display()))
