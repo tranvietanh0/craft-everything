@@ -26,7 +26,7 @@ enum View {
     Reading,
     /// No conversation of Claude Code's in this folder.
     NoSession,
-    Team(Team),
+    Team(Box<Team>),
     /// Why nothing can be shown.
     Failed(String),
 }
@@ -104,7 +104,7 @@ fn watch(shared: &Mutex<Shared>, root: &Path, ctx: &egui::Context) {
                         }
                         let w = current.get_or_insert_with(|| TeamWatch::new(&p));
                         match w.poll() {
-                            Ok(()) => View::Team(w.team(craft_anything_ai::team::now())),
+                            Ok(()) => View::Team(Box::new(w.team(craft_anything_ai::team::now()))),
                             Err(e) => View::Failed(e),
                         }
                     }
