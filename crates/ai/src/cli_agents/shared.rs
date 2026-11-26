@@ -142,6 +142,7 @@ fn prepare(engine: &Engine, keys: &crate::KeyStore, entry: &BackendEntry, beginn
     let targets = session.shared_targets();
     serde_json::to_value(&targets).map_err(|error| ToolError::invalid(format!("Couldn't share the target metadata: {error}")))?;
     let mut spec = CliSpec::new(entry.config.clone(), entry.options.clone(), beginner, Some(project));
+    spec.options.effort = config.effort_for(&entry.config, &entry.options);
     spec.targets = targets;
     spec.deep = !session.clean_room();
     spec.logs = Some(crate::failure_log::dir_in(&session.config_dir()));

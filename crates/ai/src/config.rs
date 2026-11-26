@@ -310,6 +310,10 @@ pub struct AiConfig {
     pub fallback_chain: Vec<String>,
     /// Price overrides by model id.
     pub prices: BTreeMap<String, Price>,
+    /// The thinking level for a backend that doesn't set its own (`effort` in its options). Unset,
+    /// Claude uses high. The Strongest preset sets it to max, which also works with no backend set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_effort: Option<Effort>,
     /// This installation's OpenCode Go session id, made on first use and kept with the settings so
     /// prompt caching survives restarts (and tests stay inside their own settings file).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -350,6 +354,14 @@ impl AiConfig {
 
     pub fn to_table(&self) -> Result<toml::Table, ToolError> {
         toml::Table::try_from(self).map_err(|e| ToolError::internal(format!("saving AI settings: {e}")))
+    }
+
+    /// The level a backend thinks at: its own setting, else this configuration's default, which
+    /// only a backend that always takes a level gets (an OpenAI-style API is sent none until one
+    /// is chosen, and would refuse Claude's `max`). The one place that resolves it, so the API and
+    /// agent CLI paths agree.
+    pub fn effort_for(&self, backend: &BackendConfig, options: &BackendOptions) -> Option<Effort> {
+        options.effort.or_else(|| (crate::effort_levels(backend) == Effort::ALL).then_some(self.default_effort).flatten())
     }
 
     pub fn get(&self, name: &str) -> Option<&BackendEntry> {
@@ -456,6 +468,21 @@ mod tests {
             config: BackendConfig { name: name.into(), kind, model: String::new(), base_url: None, ssh_host: None, enabled: true },
             options: BackendOptions::default(),
         }
+    }
+
+    #[test]
+    fn the_configured_default_effort_applies_only_where_a_level_is_always_sent() {
+        let claude = entry("Key", BackendKind::Anthropic).config;
+        let openai = entry("Local", BackendKind::OpenaiCompatible).config;
+        let claude_code = BackendConfig { name: "Claude Code".into(), kind: BackendKind::AgentCli, model: "claude-code".into(), ..claude.clone() };
+        let own = BackendOptions { effort: Some(Effort::High), ..BackendOptions::default() };
+        let none = BackendOptions::default();
+        let config = AiConfig { default_effort: Some(Effort::Max), ..AiConfig::default() };
+        assert_eq!(config.effort_for(&claude, &none), Some(Effort::Max), "no backend sets one: the configured default");
+        assert_eq!(config.effort_for(&claude_code, &none), Some(Effort::Max), "the agent CLI that thinks at Claude's levels gets it too");
+        assert_eq!(config.effort_for(&claude, &own), Some(Effort::High), "a backend's own level wins");
+        assert_eq!(config.effort_for(&openai, &none), None, "an OpenAI-style API is sent no level, not max");
+        assert_eq!(AiConfig::default().effort_for(&claude, &none), None, "unset: the app's usual level applies");
     }
 
     #[test]

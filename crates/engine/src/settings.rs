@@ -94,6 +94,9 @@ pub struct Settings {
     /// own engines and with Ghidra when it's installed. Off is Clean room: nothing inside the
     /// original is read, only what can be seen from outside ([`crate::clean_room`]).
     pub deep_mode: bool,
+    /// The person chose the Strongest preset (`settings_apply_preset`): Deep mode, the builder's
+    /// maximum effort and Ghidra set up without asking. Off by default; the app's defaults stay.
+    pub strongest_preset: bool,
     /// `system` (follow the system's light or dark appearance, the default), `studio` (dark) or
     /// `studio-light`.
     pub theme: String,
@@ -219,6 +222,7 @@ impl Default for Settings {
             version: SETTINGS_VERSION,
             mode: Mode::Beginner,
             deep_mode: false,
+            strongest_preset: false,
             theme: "system".into(),
             language: String::new(),
             first_run_done: false,
@@ -283,10 +287,10 @@ fn set_aside(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// The current `config.toml` format version. Bumping it means appending a step to [`SETTINGS_STEPS`].
-pub const SETTINGS_VERSION: u32 = 3;
+pub const SETTINGS_VERSION: u32 = 4;
 
 /// The steps that bring an older `config.toml` forward; step `i` goes from version `i` to `i + 1`.
-const SETTINGS_STEPS: &[Step<toml::Table>] = &[settings_v0_to_v1, settings_v1_to_v2, settings_v2_to_v3];
+const SETTINGS_STEPS: &[Step<toml::Table>] = &[settings_v0_to_v1, settings_v1_to_v2, settings_v2_to_v3, settings_v3_to_v4];
 const _: () = assert!(SETTINGS_STEPS.len() == SETTINGS_VERSION as usize, "one step per config.toml version");
 
 /// Version 0 (no `version` key) has the same shape as version 1; only the number is new.
@@ -313,6 +317,12 @@ fn settings_v1_to_v2(table: &mut toml::Table) -> Result<(), String> {
 /// Version 3 adds more project folders and the answer about a picked folder's files; both start
 /// empty. The number is new so an older build doesn't save over the list (and lose it).
 fn settings_v2_to_v3(_: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Version 4 adds the Strongest preset's flag, off until chosen. The number is new so an older
+/// build doesn't save over it and drop the choice.
+fn settings_v3_to_v4(_: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
