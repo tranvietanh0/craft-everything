@@ -696,13 +696,30 @@ fn check_user_skills(opts: &RunOptions, entry: &crate::BackendEntry, deep: bool)
         return Err(ToolError::invalid("Your Claude Code skills need Deep mode: a skill can read anything, so Clean room can't offer them.")
             .with_remediation("Switch on Deep mode (--deep in the CLI), or leave out --user-skills."));
     }
-    let ids = opts.adapters.for_backend(&entry.config.model, &entry.options).ids();
-    let claude = entry.config.kind == BackendKind::AgentCli && (ids.contains(&"claude-code") || ids.contains(&crate::cli_agents::herdr::ID));
-    if !claude {
+    if !claude_builds(opts, entry) {
         return Err(ToolError::invalid(format!("Your Claude Code skills can only be used when Claude Code builds; {} is the builder.", entry.config.name))
             .with_remediation("Choose Claude Code as the builder, or leave out --user-skills."));
     }
     Ok(())
+}
+
+/// Whether Claude Code is the builder, headless or in herdr.
+fn claude_builds(opts: &RunOptions, entry: &crate::BackendEntry) -> bool {
+    let ids = opts.adapters.for_backend(&entry.config.model, &entry.options).ids();
+    entry.config.kind == BackendKind::AgentCli && (ids.contains(&"claude-code") || ids.contains(&crate::cli_agents::herdr::ID))
+}
+
+/// Writes the project's team as Claude Code subagents and returns what the builder is told about
+/// it. Only a Claude Code builder on this computer in Deep mode gets a team: Clean room takes the
+/// Agent tool away, other agents don't read `.claude/agents`, and one over SSH works in another
+/// folder. Anywhere else nothing is written and nothing is said.
+fn team_for_builder(ws: &Workspace, deep: bool, claude: bool, remote: bool) -> Result<String, ToolError> {
+    if !deep || !claude || remote {
+        return Ok(String::new());
+    }
+    let roster = ws.manifest.roster();
+    let written = crate::team::agent_files::write(&ws.root, &roster)?;
+    Ok(crate::team::agent_files::preamble(&roster, &written.available))
 }
 
 /// Refuse saved Claude Code arguments that would continue the project's Deep session in Clean
@@ -905,6 +922,17 @@ impl Worker {
             (!session.clean_room(), session.config_dir(), session.shared_targets())
         };
         refuse_deep_session_reuse_in_clean_room(ws, &entry.config.model, &entry.options.args, deep)?;
+        let remote = entry.config.ssh_host.as_deref().is_some_and(|h| !h.trim().is_empty());
+        // A team that can't be written is said, and the builder works without one.
+        let team = team_for_builder(ws, deep, claude_builds(opts, entry), remote).unwrap_or_else(|e| {
+            let text = format!(
+                "The porting team couldn't be written to {}: {}. The builder works without it.",
+                crate::team::agent_files::AGENTS_DIR,
+                e.message
+            );
+            self.emit(RunEvent::Agent(AgentEvent::Status { text }));
+            String::new()
+        });
         Ok(CliSpec {
             builder: Some(Builder { investigation: Some(ws.investigation_dir()), inbox: ws.inbox_dir() }),
             deep,
@@ -913,7 +941,7 @@ impl Worker {
             key: crate::cli_agents::acp::key_for(&self.keys, &entry.config.model, &entry.config.name, entry.config.kind),
             cost_totals: Some(crate::cli_agents::claude_cost::path_in(&config_dir)),
             resume: ws.manifest.agent_session_for_mode(&entry.config.model, deep).map(str::to_string),
-            preamble: Some(builder_preamble(opts.user_skills)),
+            preamble: Some(format!("{}{team}", builder_preamble(opts.user_skills))),
             adapters: opts.adapters.clone(),
             ..CliSpec::new(
                 entry.config.clone(),

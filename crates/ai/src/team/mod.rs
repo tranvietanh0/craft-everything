@@ -12,14 +12,17 @@
 //! `status: "async_launched"` with the `agentId` for one started in the background, whose end is
 //! a `<task-notification>` naming its `<tool-use-id>`.
 
+pub mod agent_files;
 pub mod discord;
 mod log;
+mod roles;
 mod watch;
 
 #[cfg(test)]
 mod tests;
 
 pub use log::AgentLog;
+pub use roles::{RoleMatch, by_role, skill_names};
 pub use watch::{Session, TeamWatch, sessions, transcript_dirs};
 
 use chrono::{DateTime, Utc};

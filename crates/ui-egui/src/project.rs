@@ -943,16 +943,22 @@ pub fn show(app: &mut CraftApp, ui: &mut Ui) {
             }
         });
         ui.add_space(theme::space::SM);
-        if let Some(panel) = app.team.as_ref().filter(|p| p.root() == ws.root) {
+        if let Some(panel) = app.team.as_mut().filter(|p| p.root() == ws.root) {
+            let roles = ws.manifest.roster();
+            let roster = crate::team::Roster { roles: &roles, is_default: ws.manifest.team.is_none(), clean_room: app.view.clean_room };
+            let mut asked = None;
             // Fill the pane's remaining height, not just one row.
             let size = Vec2::new(width, ui.available_height());
             ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Min), |ui| {
                 ui.add_space(pad);
                 ui.allocate_ui_with_layout(Vec2::new(max_w, size.y), egui::Layout::top_down(egui::Align::Min), |ui| {
                     ui.set_min_size(Vec2::new(max_w, size.y));
-                    crate::team::show(panel, ui);
+                    asked = crate::team::show(panel, ui, &roster);
                 });
             });
+            if let Some(action) = asked {
+                app.change_team(&ws.root, action);
+            }
             return;
         }
         // The feed gets what the prompt box leaves; the box grows with its text, so its height
