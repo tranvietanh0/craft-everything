@@ -312,6 +312,19 @@ mod tests {
         assert!(get("WSLENV").is_some_and(|w| w.contains("WT_SESSION") && w.contains("ANDROID_HOME")), "{vars:?}");
     }
 
+    /// Live: the Gradle project at CRAFT_ANDROID_LIVE_APP builds with this computer's own JDK and
+    /// SDK as found (from WSL, through Windows) and leaves a debug APK.
+    #[test]
+    #[ignore = "builds a real Android project; set CRAFT_ANDROID_LIVE_APP to its folder"]
+    fn a_real_android_project_builds_a_debug_apk() {
+        let app = PathBuf::from(std::env::var("CRAFT_ANDROID_LIVE_APP").unwrap_or_default());
+        let found = plan(&app, &Probe::current());
+        eprintln!("plan: {found:?}");
+        let (passed, note) = build(&app, "app/", &Probe::current(), &CheckStop::default(), &[]).unwrap();
+        eprintln!("note: {note}");
+        assert!(passed && debug_apk(&app).is_some(), "{note}");
+    }
+
     /// The check passes only when Gradle succeeds AND leaves a debug APK; a wrapper missing or a
     /// failed Gradle run fails it.
     #[cfg(unix)]
