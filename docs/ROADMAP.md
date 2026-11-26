@@ -1769,10 +1769,11 @@ Owner: maintainers · Status: in progress
 ### R2.9 Everyday use: typing, projects, settings
 Owner: maintainers · Status: in progress
 Gaps found while using the app for real projects.
-- [ ] The Strongest preset (`settings_apply_preset`, `settings.strongest_preset`) still needs its
-      GUI: a first-run and Settings control, and with the preset on, a port with Ghidra missing
-      starts its install and waits for it (or proceeds with the built-in decompiler, labelled as
-      such) instead of showing the Ghidra modal in `ui-egui`'s `project.rs` Start gate.
+- [x] The Strongest preset (`settings_apply_preset`, `settings.strongest_preset`) has its GUI: one
+      switch on the first run and in Settings → Engines (`ui-egui` `preset_ui.rs`), and with the
+      preset on, Start with Ghidra missing joins or starts its download and waits (or goes on with
+      the built-in decompiler, said in a toast) instead of showing the Ghidra modal. The builder a
+      build picks gets the default effort too (`agent_spec`).
 - [ ] The headless app the UI tests use builds its engine with `Session::new` (`ui-egui`'s
       `demo::engine`), not the isolated test session, so a UI test that reaches a tool which
       saves, or looks for an installed program, touches the real config folder and finds what

@@ -164,12 +164,53 @@ impl CraftApp {
     pub fn ghidra_got(&mut self) {
         let waiting = self.ghidra.start_after.take();
         self.ghidra = GhidraFlow::default();
-        if self.ghidra_ready() {
+        let ready = self.ghidra_ready();
+        if ready {
             self.toast(tr("Ghidra is ready. Deep mode uses it from now on."), false);
         }
-        if let Some(draft) = waiting {
+        if let Some(mut draft) = waiting {
+            // Set up but still not found: under the Strongest preset the build goes on without it
+            // rather than getting it again.
+            if !ready && self.settings.strongest_preset {
+                draft.skip_ghidra = true;
+                self.toast(tr("Ghidra still isn't found, so this build uses Craft Anything's own decompiler."), true);
+            }
             self.start_draft(*draft);
         }
+    }
+
+    /// Start reached a program in Deep mode with Ghidra missing: the project waits for it. Under
+    /// the Strongest preset (the person already said yes to Ghidra) no question is asked: the
+    /// download running is joined, or one is started. Otherwise the person is asked.
+    pub(crate) fn wait_for_ghidra(&mut self, draft: MakeDraft) {
+        self.ghidra.start_after = Some(Box::new(draft));
+        if !self.settings.strongest_preset {
+            self.state.modal = Some(Modal::Ghidra);
+            return;
+        }
+        if self.ghidra.job.is_none() && !get::can_install() {
+            self.ghidra_not_got(&tr("Craft Anything can't download Ghidra on this computer."));
+            return;
+        }
+        self.get_ghidra();
+        self.toast(tr("Getting Ghidra first, as the strongest settings ask. Your project starts as soon as it's done."), false);
+    }
+
+    /// Ghidra's download failed or was stopped. A project waiting on it under the Strongest preset
+    /// starts with the built-in decompiler, and says so; returns whether one did. Without the
+    /// preset the Ghidra dialog stays, with its choices.
+    pub fn ghidra_not_got(&mut self, error: &str) -> bool {
+        if !self.settings.strongest_preset {
+            return false;
+        }
+        let Some(mut draft) = self.ghidra.start_after.take() else { return false };
+        draft.skip_ghidra = true;
+        if self.state.modal == Some(Modal::Ghidra) {
+            self.state.modal = None;
+        }
+        self.toast(trf("Ghidra couldn't be set up ({error}), so this build uses Craft Anything's own decompiler.", &[("error", error.trim())]), true);
+        self.start_draft(*draft);
+        true
     }
 
     /// The Ghidra download while it runs: (fraction, "Ghidra · 120 of 543 MB").

@@ -900,9 +900,12 @@ impl Worker {
     /// is held by the first until the statement ends, and the second then waits forever. A saved
     /// Claude `--resume` that would continue the project's Deep session in Clean room is refused.
     fn agent_spec(&self, ws: &Workspace, entry: &crate::BackendEntry, opts: &RunOptions) -> Result<CliSpec, ToolError> {
-        let (deep, config_dir, targets) = {
+        let (deep, config_dir, targets, effort) = {
             let session = self.engine.session();
-            (!session.clean_room(), session.config_dir(), session.shared_targets())
+            // The level it thinks at: its own, else the configured default (the Strongest preset's
+            // max), as the chat and API paths resolve it.
+            let effort = crate::AiConfig::from_settings(&session.settings).effort_for(&entry.config, &entry.options);
+            (!session.clean_room(), session.config_dir(), session.shared_targets(), effort)
         };
         refuse_deep_session_reuse_in_clean_room(ws, &entry.config.model, &entry.options.args, deep)?;
         Ok(CliSpec {
@@ -917,7 +920,7 @@ impl Worker {
             adapters: opts.adapters.clone(),
             ..CliSpec::new(
                 entry.config.clone(),
-                BackendOptions { user_skills: opts.user_skills, ..entry.options.clone() },
+                BackendOptions { user_skills: opts.user_skills, effort, ..entry.options.clone() },
                 opts.beginner,
                 Some(ws.root.clone()),
             )

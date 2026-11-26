@@ -32,6 +32,7 @@ pub mod menu;
 pub mod palette;
 pub mod paste;
 pub mod pins;
+pub mod preset_ui;
 pub mod project;
 pub mod prompt_box;
 pub mod report;
@@ -232,6 +233,11 @@ pub enum Done {
     },
     /// Ghidra and its Java were downloaded and set up for Deep mode.
     GhidraGot,
+    /// `settings_apply_preset` finished: its answer, and the settings it left in the session.
+    PresetApplied {
+        result: Result<Value, ToolError>,
+        settings: Box<Settings>,
+    },
     /// A tool started by a button finished (see `CraftApp::act`).
     Acted {
         tool: &'static str,
@@ -597,6 +603,8 @@ pub struct CraftApp {
     pub engine_flow: engine_ui::Flow,
     /// Getting Ghidra for Deep mode.
     pub ghidra: engine_ui::GhidraFlow,
+    /// The Strongest preset being applied, and what the last change did.
+    pub preset: preset_ui::PresetFlow,
     /// When each toast appeared, in the same order (confirmations hide after a few seconds).
     toast_at: Vec<Instant>,
     /// Distinguish repeated error occurrences without changing the persisted toast representation.
@@ -721,6 +729,7 @@ impl CraftApp {
             facts_reader: Default::default(),
             engine_flow: Default::default(),
             ghidra: Default::default(),
+            preset: Default::default(),
             toast_at: Vec::new(),
             toast_error_revision: 0,
             settings_dirty: false,
@@ -1760,8 +1769,16 @@ impl CraftApp {
                 if self.engine_flow.job.is_some_and(|(_, id)| id == job) {
                     self.engine_flow.job = None;
                 }
+                if self.preset.job == Some(job) {
+                    self.preset.job = None;
+                    self.preset.outcome = Some((e.clone(), true));
+                }
                 if self.ghidra.job == Some(job) {
                     self.ghidra.job = None;
+                    // A project waiting on it under the Strongest preset goes on without it.
+                    if self.ghidra_not_got(&e) {
+                        return;
+                    }
                 }
                 self.toast(e, true);
                 return;
@@ -1994,6 +2011,7 @@ impl CraftApp {
             }
             Done::EngineGot { builder, installer } => self.engine_got(builder, installer),
             Done::GhidraGot => self.ghidra_got(),
+            Done::PresetApplied { result, settings } => self.preset_applied(job, result, &settings),
             Done::AssetKeys(keys) => self.asset_keys = Some(keys),
             Done::Wrote { what, path } => {
                 if let Some(p) = path {
