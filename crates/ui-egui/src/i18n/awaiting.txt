@@ -108,5 +108,3 @@ Ghidra still isn't found, so this build uses Craft Anything's own decompiler.
 Craft Anything can't download Ghidra on this computer.
 Getting Ghidra first, as the strongest settings ask. Your project starts as soon as it's done.
 Ghidra couldn't be set up ({error}), so this build uses Craft Anything's own decompiler.
-Strongest settings
-Off by default. Changes Clean room / Deep below too.
