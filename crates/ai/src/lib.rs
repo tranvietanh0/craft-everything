@@ -23,6 +23,7 @@ pub mod model_options;
 pub mod model_tools;
 pub mod openai;
 mod pace;
+pub mod preset_tools;
 pub mod price;
 pub mod prompt;
 pub mod providers;
@@ -557,6 +558,7 @@ pub fn tools() -> Vec<craft_anything_engine::ToolSpec> {
     v.extend(key_tools::specs());
     v.extend(model_tools::specs());
     v.extend(model_options::specs());
+    v.extend(preset_tools::specs());
     v
 }
 
@@ -1343,7 +1345,7 @@ impl AiHub {
             name: c.name.clone(),
             model,
             local,
-            effort: e.options.effort,
+            effort: self.config().effort_for(c, &e.options),
             max_turns: e.options.max_turns.unwrap_or(agent::DEFAULT_MAX_TURNS),
             context_tokens: e.options.context_tokens.unwrap_or(0),
             tools: e.options.tools.unwrap_or_default(),
