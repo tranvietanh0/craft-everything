@@ -165,3 +165,68 @@ fn the_bot_link_comes_from_the_bots_own_files() {
     std::fs::write(ports.join(".bot").join("mirrors.json"), "{not json").unwrap();
     assert!(matches!(bot_link(&app, Some(&register)), BotLink::Unreadable { .. }), "never shown as not followed");
 }
+
+#[test]
+fn subagents_light_up_the_role_whose_id_is_their_type_at_any_depth() {
+    let dir = tempfile::tempdir().unwrap();
+    let team = team_at(dir.path(), 80);
+    let m = by_role(&team, &["gk-apk-port-runner", "tester"]);
+    assert_eq!(m.by_role.get("gk-apk-port-runner").map(Vec::len), Some(1));
+    assert!(!m.by_role.contains_key("tester"), "a role nobody worked as has no subagents");
+    let others: Vec<&str> = m.others.iter().map(|n| n.kind.as_str()).collect();
+    assert_eq!(others, ["Explore", "Explore"], "the builder's Explore and the runner's nested one are other helpers");
+}
+
+fn roster_role(id: &str) -> craft_anything_engine::team::Role {
+    let mut role = craft_anything_engine::team::default_roster().remove(0);
+    role.id = id.into();
+    role
+}
+
+#[test]
+fn the_team_is_written_as_subagents_and_only_craft_files_are_replaced_or_removed() {
+    use agent_files::{FileOwner, owners, write};
+    let dir = tempfile::tempdir().unwrap();
+    let agents = agent_files::agents_dir(dir.path());
+    std::fs::create_dir_all(&agents).unwrap();
+    let mine = "---\nname: analyst\ndescription: my own\n---\nMine.\n";
+    std::fs::write(agents.join("analyst.md"), mine).unwrap();
+    std::fs::write(agents.join("notes.md"), "my notes").unwrap();
+
+    let first = write(dir.path(), &[roster_role("analyst"), roster_role("tester"), roster_role("porter")]).unwrap();
+    assert_eq!(first.kept, ["analyst"], "the person's file for a role id is left to them");
+    assert_eq!(std::fs::read_to_string(agents.join("analyst.md")).unwrap(), mine);
+    let tester = std::fs::read_to_string(agents.join("tester.md")).unwrap();
+    assert!(tester.starts_with("---\n") && tester.contains("name: \"tester\""), "{tester}");
+
+    let second = write(dir.path(), &[roster_role("analyst"), roster_role("tester")]).unwrap();
+    assert_eq!(second.removed, ["porter"], "a role that left the team loses its file");
+    let now = owners(dir.path()).unwrap();
+    assert!(!now.contains_key("porter"));
+    let seen = (now.get("analyst"), now.get("notes"), now.get("tester"));
+    assert_eq!(seen, (Some(&FileOwner::Person), Some(&FileOwner::Person), Some(&FileOwner::Craft)));
+}
+
+#[test]
+fn a_role_file_carries_its_skills_and_hooks_as_frontmatter_claude_code_reads() {
+    use craft_anything_engine::team::Hook;
+    let mut role = roster_role("tester");
+    role.description = "Says \"hi\": then stops".into();
+    role.tools = Some(vec!["Read".into(), "Bash".into()]);
+    role.skills = vec!["my-skill".into()];
+    role.hooks = vec![
+        Hook { event: "PreToolUse".into(), matcher: "Bash".into(), command: "./check.sh".into() },
+        Hook { event: "Stop".into(), matcher: String::new(), command: "echo done".into() },
+    ];
+    let text = agent_files::render(&role);
+    let front = text.split("---\n").nth(1).unwrap();
+    for wanted in [
+        r#"description: "Says \"hi\": then stops""#,
+        r#"tools: ["Read", "Bash"]"#,
+        r#"skills: ["my-skill"]"#,
+        "  PreToolUse:\n    - matcher: \"Bash\"\n      hooks:\n        - type: command\n          command: \"./check.sh\"",
+        "  Stop:\n    - hooks:\n        - type: command\n          command: \"echo done\"",
+    ] {
+        assert!(front.contains(wanted), "{wanted} missing from\n{front}");
+    }
+}

@@ -5311,3 +5311,18 @@ fn user_skills_need_deep_mode_and_claude_code() {
     assert!(with.starts_with(BUILDER_PREAMBLE) && with.contains("Skill tool") && with.contains("tests/<feature>.md"), "{with}");
     assert!(with.contains("build_feature_report") && with.contains("ready_to_test"), "{with}");
 }
+
+#[test]
+fn only_a_local_deep_claude_code_builder_gets_the_team() {
+    let d = tempfile::tempdir().unwrap();
+    let ws = Workspace::create(d.path(), "Game", "A snake game", TargetRef::None).unwrap();
+    let agents = crate::team::agent_files::agents_dir(&ws.root);
+    // Clean room, another agent, or Claude Code over SSH: nothing written, nothing said.
+    for (deep, claude, remote) in [(false, true, false), (true, false, false), (true, true, true)] {
+        assert_eq!(team_for_builder(&ws, deep, claude, remote).unwrap(), "");
+        assert!(!agents.exists(), "nothing written for deep={deep} claude={claude} remote={remote}");
+    }
+    let told = team_for_builder(&ws, true, true, false).unwrap();
+    assert!(agents.join("analyst.md").is_file() && agents.join("tester.md").is_file());
+    assert!(told.contains("Agent tool") && told.contains("- analyst (Analyst)"), "{told}");
+}

@@ -95,3 +95,53 @@ started {t} UTC
 {id} (latest, {m} min ago)
 {id} ({m} min ago)
 {n} tool call(s)
+A team has at most {n} roles.
+Add a skill
+Add role
+Another skill's folder name
+Can't read .claude/agents: {e}
+Claude Code runs a role's hooks only in a folder you trusted in Claude Code. A headless build doesn't count as trusted, so there they may be skipped.
+Command
+Discard
+Edit team
+Go back to the standard five roles? Your changes to the team are lost.
+Hook {n} command
+Hook {n} event
+Hook {n} tools
+Hooks
+Loaded into the role when it starts, from a skill folder of that name in your Claude Code skills or this project's .claude/skills.
+New role
+No builder conversation yet. It shows here once a build with Claude Code starts.
+No conversation yet
+No other skill folders found
+No roles. Add one, or reset to the standard team.
+No subagent has worked as this role in this conversation yet.
+Not started yet
+Not written in Clean room
+Other helpers
+Remove a team role
+Remove hook {n}
+Remove role
+Remove skill {name}
+Reset the team
+Reset to the standard team
+Roles
+Save a team role
+Save role
+Saving…
+Started {n} times in this conversation
+Subagent file written
+Subagents that aren't a role on the team: Claude Code's own helpers, or a role renamed or removed since.
+The builder hasn't started in this project yet.
+The builder's conversation can't be read.
+The standard team. Saving a change keeps the whole team in this project's craft.json.
+The subagent's name. The builder starts the role by it, and the Team tab matches it.
+This project's own team, kept in its craft.json.
+Tools: Bash, Edit|Write
+Written at the next Deep build
+Your own subagent file is used
+skills {list}
+{name} (not saved)
+{n} hook(s), run only in a folder trusted in Claude Code
+{n} subagent(s), none working
+{n} working

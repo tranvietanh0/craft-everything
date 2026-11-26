@@ -41,6 +41,8 @@ pub mod sidebar;
 pub mod slash;
 pub mod state;
 pub mod team;
+mod team_chart;
+mod team_editor;
 pub mod theme;
 pub mod titlebar;
 pub mod usage;
@@ -1155,6 +1157,7 @@ impl CraftApp {
                 self.toast(tr("Called done. A new message carries on from here."), false);
             }
             ("project_approvals_set", r) => self.approval_set(r),
+            (tool, r) if team::TEAM_TOOLS.contains(&tool) => self.team_changed(job, tool, r),
             ("project_questions_set", Ok(v)) => {
                 // What was saved (the person's other changes on disk come along).
                 if let Some(ws) = self.workspace.as_mut().filter(|w| v["project"].as_str().is_some_and(|p| w.root == std::path::Path::new(p))) {
