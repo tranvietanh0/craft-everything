@@ -1,18 +1,20 @@
 //! Tester cards: a `ready_to_test` feature with a guide gets a card in the port's channel (the
-//! guide, the full file attached, the similarity, the tester role mentioned, Pass and Fail). Only
-//! members with the tester or porter role may press them. Pass records `passed`; Fail opens a form
-//! and records `broken` with what the tester wrote, leaves it as a note for the builder and posts it
-//! in the Log thread. Either way the card and the board show the verdict and Plane is told.
+//! guide, the full file attached with the pictures it links, the similarity, the tester role
+//! mentioned, Pass and Fail). Only members with the tester or porter role may press them. Pass
+//! records `passed`; Fail opens a form and records `broken` with what the tester wrote, leaves it as
+//! a note for the builder and posts it in the Log thread. Either way the card and the board show the verdict and Plane is told.
 
 use super::Bot;
 use super::embeds;
 use super::live::{self, Port};
+use super::screens::{self, Upload};
 use super::sync::SyncJob;
 use chrono::Utc;
 use craft_anything_discord::board::Board;
 use craft_anything_discord::events::Event;
 use craft_anything_discord::guide::{self, GuideFile};
 use craft_anything_discord::review::{self, STEPS_LIMIT, Verdict, WHAT_LIMIT};
+use craft_anything_discord::screens::{MOST_PER_MESSAGE, UPLOAD_LIMIT};
 use craft_anything_discord::state::{Card, CloseError};
 use craft_anything_discord::tester::{self, CardAction, Press};
 use craft_anything_discord::text::clip;
@@ -66,8 +68,10 @@ async fn post_card(http: &Http, bot: &Bot, port: &Port, feature: &str, guide: &s
     let (project, guide_name) = (port.project.clone(), guide.to_owned());
     let read = tokio::task::spawn_blocking(move || guide::read_guide(&project, &guide_name)).await;
     let read = read.map_err(|e| e.to_string()).and_then(|r| r.map_err(|e| e.to_string()));
+    let pictures = linked_pictures(port, guide, &read).await;
     let card = live.state.reserve_card();
-    let message = card_message(bot, &live.state.label, feature, guide, similarity, &read, card);
+    let image = pictures.first().map(|p| p.name.as_str());
+    let message = card_message(bot, &live.state.label, feature, guide, similarity, &read, card, image).add_files(pictures.iter().map(Upload::attachment));
     match port.channel.send_message(http, message).await {
         Ok(sent) => {
             live.state.add_card(feature, sent.id.get());
@@ -84,7 +88,18 @@ fn buttons(card: u64, disabled: bool) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn card_message(bot: &Bot, label: &str, feature: &str, guide: &str, similarity: Option<f64>, read: &Result<GuideFile, String>, card: u64) -> CreateMessage {
+/// `image`: the first picture the guide links, attached to the same message, shown in the card.
+#[expect(clippy::too_many_arguments, reason = "the card's parts, all shown on it")]
+fn card_message(
+    bot: &Bot,
+    label: &str,
+    feature: &str,
+    guide: &str,
+    similarity: Option<f64>,
+    read: &Result<GuideFile, String>,
+    card: u64,
+    image: Option<&str>,
+) -> CreateMessage {
     let testers = RoleId::new(bot.config.tester_role_id);
     let mut embed = CreateEmbed::new()
         .title(tester::card_title(feature))
@@ -115,6 +130,9 @@ fn card_message(bot: &Bot, label: &str, feature: &str, guide: &str, similarity: 
         Err(e) => {
             embed = embed.description(clip(&format!("⚠️ The guide {guide} couldn't be read: {e}"), FIELD_LIMIT));
         }
+    }
+    if let Some(name) = image {
+        embed = embed.image(format!("attachment://{name}"));
     }
     message.embed(embed)
 }
@@ -361,4 +379,15 @@ async fn conclude(http: &Http, bot: &Arc<Bot>, port: &Port, card_id: u64, who: (
         told.push_str(&format!(" The note for the builder couldn't be left ({e}); the failure is still recorded with the feature."));
     }
     asker.tell(http, &told).await;
+}
+
+/// The pictures the guide links ([`guide::linked_pictures`]), read to go on the card with the
+/// guide: up to nine, within Discord's limit for the message with the guide attached.
+async fn linked_pictures(port: &Port, guide: &str, read: &Result<GuideFile, String>) -> Vec<Upload> {
+    let Ok(file) = read else { return Vec::new() };
+    let guide_bytes = if file.too_large { 0 } else { file.text.len() as u64 };
+    let (project, guide, text) = (port.project.clone(), guide.to_owned(), file.text.clone());
+    let most = MOST_PER_MESSAGE - 1;
+    let limit = UPLOAD_LIMIT.saturating_sub(guide_bytes);
+    tokio::task::spawn_blocking(move || screens::gallery(guide::linked_pictures(&project, &guide, &text, most), most, limit)).await.unwrap_or_default()
 }

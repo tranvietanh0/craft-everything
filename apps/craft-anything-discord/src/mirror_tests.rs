@@ -188,3 +188,17 @@ fn the_first_look_waits_for_the_study_and_lists_what_it_found() {
     seen.first_look_posted = true;
     assert!(!crate::first_look::due(&seen), "posted once");
 }
+
+#[test]
+fn the_first_look_of_an_android_app_without_pictures_says_it_needs_a_device() {
+    let folder = project();
+    write(folder.path(), STUDY_NOTES, "# What we found in Tani.apks\n");
+    let m = read_project(folder.path()).unwrap();
+    let text = crate::first_look::text(folder.path(), &m, &[]);
+    assert!(text.contains("**Original screens:** no screenshots of the original (needs a device)"), "{text}");
+    assert!(crate::first_look::original_pictures(folder.path()).is_empty());
+    write(folder.path(), "capture/window.png", "png");
+    let text = crate::first_look::text(folder.path(), &m, &[]);
+    assert!(text.contains("**Original screens (1)**") && !text.contains("needs a device"), "{text}");
+    assert_eq!(crate::first_look::original_pictures(folder.path()), [folder.path().join("capture/window.png")]);
+}

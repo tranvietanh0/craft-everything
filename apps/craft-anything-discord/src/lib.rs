@@ -29,6 +29,7 @@
 //! - [`pretrust`]: the optional trust of a port's project folder in Claude Code's config before a herdr build (`PRETRUST_PORTS`).
 //! - [`mirror`]: projects made in the craft desktop app, registered on creation and mirrored by polling their files into the same events.
 //! - [`first_look`]: a mirrored project's first report, from what the study wrote.
+//! - [`screens`]: screenshots of the rebuilt app from `checks/round-*/`, their captions, batches, size limit and what was posted (`PORTS_ROOT/.bot/screenshots.json`).
 //! - [`text`]: clipping text to Discord's limits.
 
 pub mod activity;
@@ -53,6 +54,7 @@ pub mod repo;
 pub mod review;
 pub mod run;
 pub mod saved_queue;
+pub mod screens;
 pub mod slug;
 pub mod state;
 pub mod tester;

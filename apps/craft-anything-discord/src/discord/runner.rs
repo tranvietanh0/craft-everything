@@ -10,6 +10,7 @@ use super::Bot;
 use super::card;
 use super::live::Port;
 use super::scheduler::{self, Job};
+use super::screens;
 use super::sync::SyncJob;
 use chrono::Utc;
 use craft_anything_ai::cli_agents::herdr::paths::Host;
@@ -128,8 +129,9 @@ impl Progress {
     }
 }
 
-/// Folds one event into a port: its board, the usage of its job `job_id`, and, for a `feature`
-/// event, the tester cards and Plane ([`card::on_feature`]). A run's events and a mirrored app
+/// Folds one event into a port: its board, the usage of its job `job_id`, for a `feature` event
+/// the tester cards and Plane ([`card::on_feature`]), and for a `checked` or `finished` event the
+/// screenshots not posted yet ([`screens::post_new`]). A run's events and a mirrored app
 /// project's ([`super::mirror`]) both go through here.
 pub async fn fold(http: &Http, bot: &Bot, port: &Port, job_id: u64, event: &Event) {
     {
@@ -144,6 +146,10 @@ pub async fn fold(http: &Http, bot: &Bot, port: &Port, job_id: u64, event: &Even
     }
     if let Event::Feature { name, state, guide, similarity, .. } = event {
         card::on_feature(http, bot, port, name, state, guide.as_deref(), *similarity).await;
+    }
+    // A check (or the end of a run) may have written screenshots of the rebuilt app.
+    if matches!(event, Event::Checked { .. } | Event::Finished { .. }) {
+        screens::post_new(http, bot, port).await;
     }
 }
 

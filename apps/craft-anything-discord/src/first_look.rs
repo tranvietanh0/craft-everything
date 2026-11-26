@@ -7,11 +7,12 @@
 use crate::mirror::{STUDY_NOTES, Seen};
 use craft_anything_engine::workspace::Manifest;
 use craft_anything_engine::workspace::features::Feature;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Most items listed per section.
 const MOST: usize = 12;
-const PICTURES: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+/// Most pictures of the original attached to the first look (one message's worth).
+pub const GALLERY: usize = crate::screens::MOST_PER_MESSAGE;
 /// Where the study and the person leave pictures of the original.
 const PICTURE_DIRS: [&str; 2] = ["capture", "reference"];
 /// Pictures are looked for this deep under each folder.
@@ -56,12 +57,18 @@ fn study_sections(folder: &Path) -> Vec<String> {
         .collect()
 }
 
-/// The pictures of the original, by name: each one is a screen or page the study saw.
+/// The pictures of the original in `capture/` and `reference/` (the study's and the person's),
+/// sorted: each one is a screen or page the study saw. The first look's gallery.
+pub fn original_pictures(folder: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = PICTURE_DIRS.iter().flat_map(|dir| crate::screens::pictures_in(&folder.join(dir), PICTURE_DEPTH)).collect();
+    found.sort();
+    found
+}
+
+/// The pictures of the original, by name.
 fn screens(folder: &Path) -> (usize, Vec<String>) {
-    let mut names = Vec::new();
-    for dir in PICTURE_DIRS {
-        collect_pictures(&folder.join(dir), PICTURE_DEPTH, &mut names);
-    }
+    let mut names: Vec<String> =
+        original_pictures(folder).iter().filter_map(|p| p.file_stem()).map(|stem| stem.to_string_lossy().replace(['-', '_'], " ")).collect();
     names.sort();
     names.dedup();
     let count = names.len();
@@ -69,18 +76,16 @@ fn screens(folder: &Path) -> (usize, Vec<String>) {
     (count, names)
 }
 
-fn collect_pictures(dir: &Path, depth: usize, out: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for path in entries.flatten().map(|e| e.path()) {
-        if path.is_dir() && depth > 0 {
-            collect_pictures(&path, depth - 1, out);
-        } else if path.extension().is_some_and(|x| PICTURES.contains(&x.to_string_lossy().to_ascii_lowercase().as_str()))
-            && let Some(stem) = path.file_stem()
-        {
-            out.push(stem.to_string_lossy().replace(['-', '_'], " "));
-        }
-    }
+/// An Android app is never started by craft (the study reads its package), so its first look
+/// says why there are no pictures of it.
+fn is_android(m: &Manifest) -> bool {
+    use craft_anything_engine::workspace::TargetRef;
+    let TargetRef::Local { path } = &m.target else { return false };
+    path.extension().is_some_and(|e| matches!(e.to_string_lossy().to_ascii_lowercase().as_str(), "apk" | "apks" | "xapk" | "aab"))
 }
+
+/// Said in place of the gallery when craft made no picture of an Android original.
+pub const NO_ANDROID_SCREENS: &str = "no screenshots of the original (needs a device): craft reads an Android app's package but doesn't run it, so nothing pictured its screens. Picturing them needs adb and an emulator or a phone with the app.";
 
 fn bullets(items: &[String]) -> String {
     items.iter().map(|i| format!("• {i}")).collect::<Vec<_>>().join("\n")
@@ -98,10 +103,14 @@ pub fn text(folder: &Path, m: &Manifest, features: &[Feature]) -> String {
     }
     let (count, names) = screens(folder);
     if count > 0 {
-        out.push_str(&format!("\n\n**Screens and pages seen ({count})**\n{}", bullets(&names)));
+        out.push_str(&format!("\n\n**Original screens ({count})**\n{}", bullets(&names)));
         if count > names.len() {
             out.push_str(&format!("\n… and {} more", count - names.len()));
         }
+    } else if is_android(m) {
+        out.push_str(&format!("\n\n**Original screens:** {NO_ANDROID_SCREENS}"));
+    } else {
+        out.push_str("\n\n**Original screens:** none (no pictures in capture/ or reference/).");
     }
     let sections = study_sections(folder);
     if !sections.is_empty() {

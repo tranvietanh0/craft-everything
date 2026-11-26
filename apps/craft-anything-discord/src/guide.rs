@@ -52,9 +52,51 @@ pub fn read_guide(project: &Path, guide: &str) -> Result<GuideFile, ReadError> {
     Ok(GuideFile { text: String::from_utf8_lossy(&bytes).into_owned(), file_name, too_large: size > ATTACH_LIMIT })
 }
 
+/// The pictures a guide links (`![…](path)`): the screenshots the builder tied to the feature. A
+/// path is taken from the guide's folder, then from the project folder; only a picture file inside
+/// the project counts (links followed first). At most `most`, in the guide's order. Blocking.
+pub fn linked_pictures(project: &Path, guide: &str, text: &str, most: usize) -> Vec<std::path::PathBuf> {
+    let Ok(real_project) = project.canonicalize() else { return Vec::new() };
+    let guide_dir = Path::new(guide.trim()).parent().unwrap_or(Path::new(""));
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for target in text.split("![").skip(1).filter_map(|rest| rest.split_once("](")).filter_map(|(_, rest)| rest.split_once(')')).map(|(t, _)| t) {
+        // `![x](path "title")`: the path is the first word, maybe in `<…>`.
+        let target = target.split_whitespace().next().unwrap_or("").trim_matches(['<', '>']);
+        if target.is_empty() || target.contains("://") || Path::new(target).is_absolute() {
+            continue;
+        }
+        let found = [project.join(guide_dir).join(target), project.join(target)]
+            .into_iter()
+            .filter_map(|p| p.canonicalize().ok())
+            .find(|p| p.starts_with(&real_project) && p.is_file() && crate::screens::is_picture(p));
+        if let Some(path) = found.filter(|p| !out.contains(p)) {
+            out.push(path);
+        }
+        if out.len() >= most {
+            break;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_guide_links_pictures_inside_the_project_only() {
+        let project = tempfile::tempdir().unwrap();
+        let p = project.path();
+        std::fs::create_dir_all(p.join("tests")).unwrap();
+        std::fs::create_dir_all(p.join("checks/round-1")).unwrap();
+        std::fs::write(p.join("checks/round-1/map.png"), b"png").unwrap();
+        std::fs::write(p.join("tests/inline.jpg"), b"jpg").unwrap();
+        let text = "![map](../checks/round-1/map.png) ![same](checks/round-1/map.png \"again\")\n![](inline.jpg) ![out](../../x.png) ![web](https://e.com/a.png) ![md](map.md)";
+        let real = p.canonicalize().unwrap();
+        assert_eq!(linked_pictures(p, "tests/map.md", text, 10), [real.join("checks/round-1/map.png"), real.join("tests/inline.jpg")]);
+        assert_eq!(linked_pictures(p, "tests/map.md", text, 1).len(), 1, "at most `most`");
+        assert!(linked_pictures(p, "tests/map.md", "no pictures", 10).is_empty());
+    }
 
     #[test]
     fn a_guide_in_the_project_is_read_whole() {

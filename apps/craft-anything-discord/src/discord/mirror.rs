@@ -12,6 +12,7 @@ use super::live::{self, Port};
 use super::port::{pin, reserve_slug};
 use super::runner;
 use super::scheduler;
+use super::screens;
 use super::sync::SyncJob;
 use chrono::Utc;
 use craft_anything_discord::board::Board;
@@ -23,6 +24,7 @@ use craft_anything_discord::jobs::{JobKind, JobStatus};
 use craft_anything_discord::log::log_line;
 use craft_anything_discord::mirror::{self, Admit, Mirror, Mirrors, Poll, Registration, Seen};
 use craft_anything_discord::run::Target;
+use craft_anything_discord::screens::UPLOAD_LIMIT;
 use craft_anything_discord::slug;
 use craft_anything_discord::state::PortState;
 use craft_anything_discord::text::clip;
@@ -233,15 +235,21 @@ async fn show(http: &Http, bot: &Bot, port: &Port, found: &Poll) {
 /// Posts the first look in the channel. `false` when it couldn't be (tried again next poll).
 async fn post_first_look(http: &Http, port: &Port, folder: &Path, seen: &Seen) -> bool {
     let (folder, features) = (folder.to_path_buf(), seen.features.clone());
-    let text = blocking(move || {
+    let read = blocking(move || {
         let bytes = std::fs::read(folder.join(craft_anything_engine::workspace::MANIFEST)).map_err(|e| e.to_string())?;
         let m = craft_anything_engine::workspace::read_manifest(&bytes).map_err(|e| e.message)?;
-        Ok::<_, String>(first_look::text(&folder, &m, &features))
+        // The original's pictures go with it as its gallery, as many as fit in one message.
+        let gallery = screens::gallery(first_look::original_pictures(&folder), first_look::GALLERY, UPLOAD_LIMIT);
+        Ok::<_, String>((first_look::text(&folder, &m, &features), gallery))
     })
     .await
     .and_then(|r| r);
-    match text {
-        Ok(text) => match port.channel.say(http, clip(&text, MESSAGE_LIMIT)).await {
+    match read {
+        Ok((text, gallery)) => match port
+            .channel
+            .send_message(http, CreateMessage::new().content(clip(&text, MESSAGE_LIMIT)).add_files(gallery.iter().map(screens::Upload::attachment)))
+            .await
+        {
             Ok(_) => true,
             Err(e) => {
                 log::warn!("couldn't post the first look in {}: {e}", port.channel);

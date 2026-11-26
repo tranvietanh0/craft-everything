@@ -13,6 +13,7 @@ mod mirror;
 mod port;
 mod runner;
 mod scheduler;
+mod screens;
 mod summary;
 mod sync;
 
@@ -36,6 +37,9 @@ pub struct Bot {
     pub queue: Mutex<RebuildQueue<scheduler::Job>>,
     pub ports: Mutex<HashMap<ChannelId, Arc<live::Port>>>,
     pub services: Arc<Services>,
+    /// Held while screenshots are posted: every port shares the record of what was posted
+    /// (`PORTS_ROOT/.bot/screenshots.json`).
+    pub shots: Mutex<()>,
     /// Set on the first sign-in: a reconnect signs in again, but the queue is restored and the
     /// summary started once.
     started: AtomicBool,
@@ -124,6 +128,7 @@ pub async fn serve(config: Config) -> Result<(), String> {
         queue: Mutex::new(RebuildQueue::new()),
         ports: Mutex::new(HashMap::new()),
         services,
+        shots: Mutex::new(()),
         started: AtomicBool::new(false),
         recovery: Mutex::new(Some(recovery)),
     });
