@@ -144,7 +144,7 @@ pub fn is_android(stack: &str) -> bool {
 /// ([`Stack::default_for`], ignoring case); None for a file no stack claims or no extension.
 pub fn default_for(target: &std::path::Path) -> Option<&'static Stack> {
     let ext = target.extension()?.to_str()?.to_ascii_lowercase();
-    catalogue().iter().find(|s| s.default_for.iter().any(|e| *e == ext))
+    catalogue().iter().find(|s| s.default_for.contains(&ext))
 }
 
 /// A stack picked by name: its full name or its engine id, ignoring case (`unity`, `Godot`,

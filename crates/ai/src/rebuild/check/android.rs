@@ -34,13 +34,17 @@ pub enum Route {
     Windows,
 }
 
+/// A setting by name, None when unset or blank.
+type Setting = Box<dyn Fn(&str) -> Option<String>>;
+
 /// What this computer has, read once; tests fill it in themselves.
 pub struct Probe {
-    /// Running in WSL with Windows reachable.
+    /// Running in WSL (Windows' programs may be reachable through interop).
     pub wsl: bool,
+    /// Running on Windows itself: the wrapper is gradlew.bat.
     pub windows: bool,
     /// Settings by name (the process environment).
-    pub env: Box<dyn Fn(&str) -> Option<String>>,
+    pub env: Setting,
     /// Whether a program is on PATH.
     pub have: Box<dyn Fn(&str) -> bool>,
     /// Folders [`SDK_GLOBS`] are looked for below (a Windows drive, the home folder).
@@ -187,7 +191,12 @@ fn settings(plan: &Plan, probe: &Probe) -> Vec<(&'static str, OsString)> {
 /// The debug APK Gradle left in `app`, if there is one.
 pub fn debug_apk(app: &Path) -> Option<PathBuf> {
     let dir = app.join(APK_DIR);
-    std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("apk")))
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("apk")))
 }
 
 /// Build `app` with its Gradle wrapper's `assembleDebug`: passes only when Gradle succeeds and
@@ -231,7 +240,10 @@ fn judge(app: &Path, place: &str, ok: bool, out: &str, sdk: Option<&Path>) -> Re
     }
     match (ok, debug_apk(app)) {
         (true, Some(apk)) => Ok((true, format!("Build succeeded: {}.", apk.strip_prefix(app).unwrap_or(&apk).display()))),
-        (true, None) => Ok((false, format!("Gradle finished, but there's no debug APK in {APK_DIR}/ in {place}: the app module must be app/app/, built by `assembleDebug`."))),
+        (true, None) => Ok((
+            false,
+            format!("Gradle finished, but there's no debug APK in {APK_DIR}/ in {place}: the app module must be app/app/, built by `assembleDebug`."),
+        )),
         (false, _) => Ok((false, format!("Build failed (`gradlew assembleDebug`): {}", error_lines(out)))),
     }
 }
