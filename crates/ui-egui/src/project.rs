@@ -944,10 +944,12 @@ pub fn show(app: &mut CraftApp, ui: &mut Ui) {
         });
         ui.add_space(theme::space::SM);
         if let Some(panel) = app.team.as_ref().filter(|p| p.root() == ws.root) {
-            ui.horizontal(|ui| {
+            // Fill the pane's remaining height, not just one row.
+            let size = Vec2::new(width, ui.available_height());
+            ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Min), |ui| {
                 ui.add_space(pad);
-                ui.vertical(|ui| {
-                    ui.set_width(max_w);
+                ui.allocate_ui_with_layout(Vec2::new(max_w, size.y), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_min_size(Vec2::new(max_w, size.y));
                     crate::team::show(panel, ui);
                 });
             });
