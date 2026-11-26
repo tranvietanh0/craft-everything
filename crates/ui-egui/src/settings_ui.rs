@@ -373,6 +373,10 @@ fn path_field(ui: &mut Ui, value: &mut Option<PathBuf>, name: &str, hint: &str) 
 
 fn engines(app: &mut CraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    row(ui, "Strongest settings", "Off by default. Changes Clean room / Deep below too.", |ui| {
+        ui.vertical(|ui| crate::preset_ui::control(app, ui));
+    });
+    ui.add_space(theme::space::MD);
     row(
         ui,
         "Clean room / Deep",

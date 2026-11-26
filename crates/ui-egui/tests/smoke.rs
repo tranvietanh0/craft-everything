@@ -281,6 +281,54 @@ fn deep_mode_without_ghidra_asks_to_get_it_before_using_it() {
     h.get_by_label("Build without it");
 }
 
+/// R2.9: under the Strongest preset, Start with Ghidra missing doesn't ask about Ghidra: the
+/// project joins the download running and waits for it; if that download fails, the project starts
+/// with the built-in decompiler and says so.
+#[test]
+fn the_strongest_preset_starts_without_asking_about_ghidra() {
+    use craft_anything_engine::workspace::TargetRef;
+    use craft_anything_engines::game::{Builder, Installed, Inventory};
+    let d = tempfile::tempdir().unwrap();
+    let (store, game, projects) = (d.path().join("engines"), d.path().join("game"), d.path().join("projects"));
+    std::fs::create_dir_all(&game).unwrap();
+    // A download said to be running already (an id no job has), so the test joins it and never
+    // downloads anything.
+    let running = u64::MAX;
+    let mut h = harness_sized(egui::vec2(1280.0, 1120.0), move || {
+        let mut a = demo::app(demo::engine(Mode::Beginner, true));
+        demo::fill_projects(&mut a);
+        demo::deep(&mut a);
+        a.settings.strongest_preset = true;
+        a.settings.engines.store_dir = Some(store);
+        a.settings.projects_dir = Some(projects);
+        a.state.make.target = TargetRef::Local { path: game };
+        a.state.make.game = true;
+        a.state.make.request = "Recreate this game".into();
+        a.state.make.builder = Some(Builder::Unity);
+        a.game_engines = Some(Inventory {
+            engines: vec![Installed { builder: Builder::Unity, version: "6000.0.23f1".into(), program: "Unity.exe".into() }],
+            ..Default::default()
+        });
+        a.asset_keys = Some(fal_key(true));
+        a.ghidra.job = Some(running);
+        a
+    });
+    h.run_steps(3);
+    assert!(h.state_mut().ghidra_missing());
+    h.get_by_label("Start").click();
+    h.run_steps(4);
+    assert_eq!(h.state().state.modal, None, "no Ghidra question under the preset");
+    assert!(h.state().ghidra.start_after.is_some(), "the project waits for Ghidra");
+    assert_eq!(h.state().ghidra.job, Some(running), "the running download is joined, not started again");
+    assert!(h.state().creating.is_none(), "nothing starts before Ghidra is ready");
+    // The download fails: the project starts anyway, and says it's without Ghidra.
+    h.state_mut().ghidra.job = None;
+    assert!(h.state_mut().ghidra_not_got("no network"));
+    assert!(h.state().ghidra.start_after.is_none());
+    assert!(h.state().creating.is_some(), "the project starts with the built-in decompiler");
+    assert!(h.state().state.toasts.iter().any(|(text, error)| *error && text.contains("no network") && text.contains("own decompiler")));
+}
+
 /// A game's chosen folder is shown like every chosen folder: cut to fit its row, never widening the
 /// page, with the whole path on hover.
 #[test]

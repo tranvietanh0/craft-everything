@@ -95,3 +95,16 @@ started {t} UTC
 {id} (latest, {m} min ago)
 {id} ({m} min ago)
 {n} tool call(s)
+This build of Craft Anything can't apply settings presets.
+Use the strongest settings
+Use the usual settings
+The settings weren't changed: {error}
+Strongest settings are on. Ghidra is set up, and Deep mode uses it.
+Strongest settings are on. Ghidra was already here, and Deep mode uses it.
+Strongest settings are on, but Ghidra couldn't be set up: {error} Deep mode uses Craft Anything's own decompiler until it is.
+Back to the usual settings: Clean room and the usual effort. Ghidra stays if it was installed.
+Deep mode, the builder's highest effort, and Ghidra downloaded (about {mb} MB) so a port never stops to ask. Off: Clean room and the usual effort. AI pictures and sounds stay as you set them.
+Ghidra still isn't found, so this build uses Craft Anything's own decompiler.
+Craft Anything can't download Ghidra on this computer.
+Getting Ghidra first, as the strongest settings ask. Your project starts as soon as it's done.
+Ghidra couldn't be set up ({error}), so this build uses Craft Anything's own decompiler.

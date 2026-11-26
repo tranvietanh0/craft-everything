@@ -88,11 +88,10 @@ impl CraftApp {
             return;
         }
         let target = resolve_target(&draft);
-        // Deep mode reads a program's code with Ghidra: got first when it isn't here (asked once).
+        // Deep mode reads a program's code with Ghidra: got first when it isn't here (asked once,
+        // or not at all under the Strongest preset).
         if matches!(target, TargetRef::Local { .. }) && !draft.skip_ghidra && self.ghidra_missing() {
-            self.ghidra.start_after = Some(Box::new(draft));
-            self.state.modal = Some(Modal::Ghidra);
-            return;
+            return self.wait_for_ghidra(draft);
         }
         if self.creating.is_some() {
             return;

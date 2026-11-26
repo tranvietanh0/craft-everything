@@ -3255,6 +3255,35 @@ fn a_build_attach_closes_a_target_opened_in_another_project() {
     assert!(session.active_id().is_none(), "and nothing is selected");
 }
 
+/// R2.9: the Strongest preset's default effort reaches the builder picked when none is named
+/// (the Claude Code the app sets up on Start), not only chats; its own level still wins.
+#[test]
+fn the_default_effort_reaches_the_builder_picked_without_a_name() {
+    use crate::model::Effort;
+    let d = tempfile::tempdir().unwrap();
+    let ws = Workspace::create(d.path(), "x", "A thing", craft_anything_engine::workspace::TargetRef::None).unwrap();
+    let claude_code = crate::BackendEntry {
+        config: crate::BackendConfig {
+            name: "Claude Code".into(),
+            kind: crate::BackendKind::AgentCli,
+            model: "claude-code".into(),
+            base_url: None,
+            ssh_host: None,
+            enabled: true,
+        },
+        options: crate::BackendOptions::default(),
+    };
+    let mut ai = crate::AiConfig { default_effort: Some(Effort::Max), ..crate::AiConfig::default() };
+    ai.upsert(claude_code);
+    let w = check_worker(&ws, true);
+    w.engine.session().settings.ai = ai.to_table().unwrap();
+    let picked = builder_backend(&ai, None).unwrap();
+    assert_eq!(w.agent_spec(&ws, &picked, &RunOptions::default()).unwrap().options.effort, Some(Effort::Max));
+    let mut own = picked.clone();
+    own.options.effort = Some(Effort::Low);
+    assert_eq!(w.agent_spec(&ws, &own, &RunOptions::default()).unwrap().options.effort, Some(Effort::Low), "a backend's own level wins");
+}
+
 /// A worker over a test session and the workspace's feed, for check tests.
 pub(crate) fn check_worker(ws: &Workspace, deep: bool) -> Worker {
     let mut s = craft_anything_engine::testing::session();

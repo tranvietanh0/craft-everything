@@ -76,6 +76,12 @@ fn welcome(app: &mut CraftApp, ui: &mut Ui) {
         }
     });
     ui.add_space(theme::space::XL);
+    // Opt-in: the app's defaults (Clean room) stay unless this is switched on.
+    ui.scope(|ui| {
+        ui.set_max_width(w * 2.0 + 16.0);
+        crate::preset_ui::control(app, ui);
+    });
+    ui.add_space(theme::space::XL);
     if widgets::link(ui, "Skip setup").on_hover_text(tr("Start with Simple mode; you can set up AI later in Settings.")).clicked() {
         app.finish_first_run();
     }
